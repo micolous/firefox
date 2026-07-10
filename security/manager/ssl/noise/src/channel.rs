@@ -34,7 +34,31 @@ impl Channel {
         self.writer.initialize_key(write_key);
     }
 
+    /// Returns `true` if both the reader and writer side of the channel have been initialized with
+    /// keys, and can encrypt and decrypt data.
     pub fn has_keys(&self) -> bool {
         self.reader.has_key() && self.writer.has_key()
+    }
+
+    /// Get the current reader nonce. This is only for tests.
+    #[inline]
+    pub fn get_reader_nonce(&self) -> u64 {
+        self.reader.get_nonce()
+    }
+
+    #[inline]
+    pub fn set_reader_nonce(&mut self, nonce: u64) {
+        self.reader.set_nonce(nonce);
+    }
+
+    /// Get the current writer nonce. This is only for tests.
+    #[inline]
+    pub fn get_writer_nonce(&self) -> u64 {
+        self.writer.get_nonce()
+    }
+
+    #[inline]
+    pub fn set_writer_nonce(&mut self, nonce: u64) {
+        self.writer.set_nonce(nonce);
     }
 }

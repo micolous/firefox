@@ -87,23 +87,29 @@ pub extern "C" fn Rust_NoiseChannelEncryptDecrypt() {
 
     let mut alice = Channel::new(key0.clone(), key1.clone());
     let mut bob = Channel::new(key1.clone(), key0.clone());
-    // let mut corrupted = Channel::new(key1, key0);
+    let mut corrupted = Channel::new(key1, key0);
 
     for l in 0..512 {
         let msg = vec![0xff; l];
-        let crypted = alice.encrypt(&msg).unwrap();
+
+        // Synchronise the "corrupted" channel with "bob", such that it should
+        // be able to decrypt the same messages (if they were valid).
+        corrupted.set_reader_nonce(bob.get_reader_nonce());
+
+        let mut crypted = alice.encrypt(&msg).unwrap();
         let decrypted = bob.decrypt(&crypted).unwrap();
+        expect_eq!(alice.get_writer_nonce(), bob.get_reader_nonce());
         expect_eq!(msg.as_slice(), decrypted.as_slice());
         expect_ne!(msg.as_slice(), crypted.as_slice());
+
         // Output should have lengthened due to the AEAD tag (16 bytes) and at
         // least 1 byte of padding.
-        expect_gt!(crypted.len(), l + 16)
+        expect_gt!(crypted.len(), l + 16);
 
-        // Corrupt the message
-        // if l > 0 {
-        //     crypted[(l * 3) * l] ^= 1;
-        // }
-        // corrupted.reader.set_nonce(bob.reader.get_nonce());
-        // assert!(corrupted.decrypt(&crypted).is_err());
+        if l > 0 {
+            // Corrupt the message
+            crypted[(l * 3) % l] ^= 1;
+            expect_eq!(true, corrupted.decrypt(&crypted).is_err());
+        }
     }
 }

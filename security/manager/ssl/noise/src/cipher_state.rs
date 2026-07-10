@@ -39,6 +39,7 @@ impl CipherState {
         self.k.is_some()
     }
 
+    /// Get the current nonce. This is only for tests.
     #[inline]
     pub fn get_nonce(&self) -> u64 {
         self.n
