@@ -3,17 +3,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use crate::{
-    KEY_LENGTH, Result,
+    ALG, KEY_LENGTH, Result,
     cipher::{decrypt, encrypt},
 };
-use nserror::{NS_ERROR_FAILURE, NS_ERROR_INVALID_ARG, NS_OK, nsresult};
-use nss_rs::{
-    SymKey,
-    aead::{Aead, AeadAlgorithms},
+use nserror::{
+    NS_ERROR_DOM_INVALID_STATE_ERR, NS_ERROR_FAILURE, NS_ERROR_INVALID_ARG, NS_OK, nsresult,
 };
+use nss_rs::{SymKey, aead::Aead};
 use std::sync::{Mutex, MutexGuard};
 use thin_vec::ThinVec;
-use xpcom::{interfaces::nsINoiseCipherState, xpcom_method};
+use xpcom::xpcom_method;
 
 /// [Noise `CipherState`][0] object.
 ///
@@ -29,11 +28,13 @@ impl CipherState {
         Self { k: Some(key), n: 0 }
     }
 
+    /// > Sets `k` = `key`. Sets `n` =  `0`.
     pub fn initialize_key(&mut self, key: SymKey) {
         self.k = Some(key);
         self.n = 0;
     }
 
+    /// > Returns `true` if `k` is non-empty, `false` otherwise.
     #[inline]
     pub fn has_key(&self) -> bool {
         self.k.is_some()
@@ -45,11 +46,21 @@ impl CipherState {
         self.n
     }
 
+    /// > Sets `n` = `nonce`. This function is used for handling out-of-order
+    /// > transport messages...
     #[inline]
     pub fn set_nonce(&mut self, nonce: u64) {
         self.n = nonce;
     }
 
+    /// Check that the current nonce is valid.
+    ///
+    /// > The maximum `n` value (2<sup>64</sup>-1) is reserved for other use.
+    /// >
+    /// > If incrementing `n` results in 2<sup>64</sup>-1, then any further
+    /// > [`encrypt_with_ad()`][Self::encrypt_with_ad] or
+    /// > [`decrypt_with_ad()`][Self::decrypt_with_ad] calls will signal an
+    /// > error to the caller.
     #[inline]
     fn check_nonce(&self) -> Result {
         if self.n == u64::MAX {
@@ -59,10 +70,13 @@ impl CipherState {
         Ok(())
     }
 
+    /// > If `k` is non-empty, returns `ENCRYPT(k, n++, ad, plaintext)`.
+    ///
+    /// Unlike the spec, this returns an error if `k` is empty.
     pub fn encrypt_with_ad(&mut self, ad: &[u8], plaintext: &[u8]) -> Result<Vec<u8>> {
         let Some(k) = &self.k else {
-            // Return plaintext
-            return Ok(Vec::from(plaintext));
+            // The spec says to return plaintext, but this is dangerous.
+            return Err(NS_ERROR_DOM_INVALID_STATE_ERR);
         };
 
         self.check_nonce()?;
@@ -71,12 +85,18 @@ impl CipherState {
         Ok(ciphertext)
     }
 
+    /// > If `k` is non-empty returns `DECRYPT(k, n++, ad, ciphertext)`.
+    /// >
+    /// > If an authentication failure occurs in `DECRYPT()` then `n` is not
+    /// > incremented and an error is signaled to the caller.
+    ///
+    /// Unlike the spec, this returns an error if `k` is empty.
     pub fn decrypt_with_ad(&mut self, ad: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>> {
         let Some(k) = &self.k else {
-            // Return plaintext
-            return Ok(Vec::from(ciphertext));
+            // The spec says to return ciphertext, but this is dangerous.
+            return Err(NS_ERROR_DOM_INVALID_STATE_ERR);
         };
-        let _ = (ad, ciphertext);
+
         self.check_nonce()?;
         let plaintext = decrypt(k, self.n, ad, ciphertext)?;
         self.n += 1;
@@ -101,8 +121,7 @@ impl NoiseCipherState {
             return Err(NS_ERROR_INVALID_ARG);
         }
 
-        let key =
-            Aead::import_key(AeadAlgorithms::Aes256Gcm, &key).map_err(|_| NS_ERROR_INVALID_ARG)?;
+        let key = Aead::import_key(ALG, &key).map_err(|_| NS_ERROR_INVALID_ARG)?;
 
         let mut guard = self.get_self()?;
 

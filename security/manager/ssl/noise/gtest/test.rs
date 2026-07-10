@@ -11,7 +11,7 @@ extern crate noise;
 extern crate nss_rs;
 
 use noise::*;
-use nss_rs::aead::{Aead, AeadAlgorithms};
+use nss_rs::aead::Aead;
 use std::{ffi::CString, os::raw::c_char};
 
 fn nonfatal_fail(msg: String) {
@@ -81,7 +81,6 @@ macro_rules! expect_gt {
 /// Test encryption and decryption with a pair of [`Channel`s][Channel].
 #[no_mangle]
 pub extern "C" fn Rust_NoiseChannelEncryptDecrypt() {
-    const ALG: AeadAlgorithms = AeadAlgorithms::Aes256Gcm;
     let key0 = Aead::import_key(ALG, &[42; 32]).expect("import_key/key0");
     let key1 = Aead::import_key(ALG, &[67; 32]).expect("import_key/key1");
 

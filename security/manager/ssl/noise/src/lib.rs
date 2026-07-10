@@ -18,5 +18,5 @@ use nss_rs::aead::AeadAlgorithms;
 pub use crate::{cipher_state::CipherState, channel::Channel};
 
 pub type Result<T = ()> = std::result::Result<T, nserror::nsresult>;
-pub const KEY_LENGTH: usize = AeadAlgorithms::Aes256Gcm.key_len() as usize;
-pub type Key = [u8; KEY_LENGTH];
+pub const ALG: AeadAlgorithms = AeadAlgorithms::Aes256Gcm;
+pub const KEY_LENGTH: usize = ALG.key_len() as usize;

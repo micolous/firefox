@@ -1,0 +1,31 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#include "nsISupports.idl"
+
+/**
+ * nsINoiseChannel
+ * This provides a transport interface from a pair of CipherState objects.
+ *
+ * This is used for transport-level messages after the initial Noise handshake
+ * has completed (`SymmetricState::Split()`).
+ *
+ * https://noiseprotocol.org/noise.html#the-cipherstate-object
+ * https://noiseprotocol.org/noise.html#the-symmetricstate-object
+ */
+
+[scriptable, uuid(44147a85-3d83-4fa5-b165-bb1f334b1ea4)]
+interface nsINoiseChannel : nsISupports
+{
+    /**
+     * `true` if the keys have been set for both the reader and writer side of
+     * the channel.
+     */
+    readonly attribute boolean hasKeys;
+
+    void initializeKeys(in Array<octet> read_key, in Array<octet> write_key);
+
+    Array<octet> encrypt(in Array<octet> plaintext);
+    Array<octet> decrypt(in Array<octet> ciphertext);
+};
