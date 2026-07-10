@@ -17,6 +17,7 @@ XPIDL_SOURCES += [
     "nsICryptoHash.idl",
     "nsIDataStorage.idl",
     "nsIFIPSUtils.idl",
+    "nsINoiseCipherState.idl",
     "nsINSSComponent.idl",
     "nsINSSErrorsService.idl",
     "nsINSSVersion.idl",
