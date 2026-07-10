@@ -28,4 +28,13 @@ impl Channel {
     pub fn decrypt(&mut self, ciphertext: &[u8]) -> Result<Vec<u8>> {
         self.reader.decrypt_with_ad(&[], ciphertext)
     }
+
+    pub fn initialize_keys(&mut self, read_key: SymKey, write_key: SymKey) {
+        self.reader.initialize_key(read_key);
+        self.writer.initialize_key(write_key);
+    }
+
+    pub fn has_keys(&self) -> bool {
+        self.reader.has_key() && self.writer.has_key()
+    }
 }

@@ -12,7 +12,7 @@ use nss_rs::{
     aead::{Aead, AeadAlgorithms},
 };
 use std::sync::{Mutex, MutexGuard};
-use thin_vec::{ThinVec, thin_vec};
+use thin_vec::ThinVec;
 use xpcom::{interfaces::nsINoiseCipherState, xpcom_method};
 
 /// [Noise `CipherState`][0] object.
@@ -83,6 +83,7 @@ impl CipherState {
     }
 }
 
+/// XPCOM wrapper for [`CipherState`].
 #[xpcom(implement(nsINoiseCipherState), atomic)]
 struct NoiseCipherState {
     inner: Mutex<CipherState>,
