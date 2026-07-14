@@ -3,16 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use crate::{
-    ALG, KEY_LENGTH, Result,
+    Result,
     cipher::{decrypt, encrypt},
 };
-use nserror::{
-    NS_ERROR_DOM_INVALID_STATE_ERR, NS_ERROR_FAILURE, NS_ERROR_INVALID_ARG, NS_OK, nsresult,
-};
-use nss_rs::{SymKey, aead::Aead};
-use std::sync::{Mutex, MutexGuard};
-use thin_vec::ThinVec;
-use xpcom::xpcom_method;
+use nserror::{NS_ERROR_DOM_INVALID_STATE_ERR, NS_ERROR_FAILURE};
+use nss_rs::SymKey;
 
 /// [Noise `CipherState`][0] object.
 ///
@@ -101,60 +96,5 @@ impl CipherState {
         let plaintext = decrypt(k, self.n, ad, ciphertext)?;
         self.n += 1;
         Ok(plaintext)
-    }
-}
-
-/// XPCOM wrapper for [`CipherState`].
-#[xpcom(implement(nsINoiseCipherState), atomic)]
-struct NoiseCipherState {
-    inner: Mutex<CipherState>,
-}
-
-impl NoiseCipherState {
-    fn get_self(&self) -> Result<MutexGuard<'_, CipherState>> {
-        self.inner.lock().map_err(|_| NS_ERROR_FAILURE)
-    }
-
-    xpcom_method!(initialize_key => InitializeKey(key: *const ThinVec<u8>));
-    fn initialize_key(&self, key: &ThinVec<u8>) -> Result {
-        if key.len() != KEY_LENGTH {
-            return Err(NS_ERROR_INVALID_ARG);
-        }
-
-        let key = Aead::import_key(ALG, &key).map_err(|_| NS_ERROR_INVALID_ARG)?;
-
-        let mut guard = self.get_self()?;
-
-        guard.initialize_key(key);
-
-        Ok(())
-    }
-
-    xpcom_method!(set_nonce => SetNonce(nonce: u64));
-    fn set_nonce(&self, nonce: u64) -> Result {
-        let mut guard = self.get_self()?;
-        guard.n = nonce;
-
-        Ok(())
-    }
-
-    xpcom_method!(has_key => GetHasKey() -> bool);
-    fn has_key(&self) -> Result<bool> {
-        let guard = self.get_self()?;
-        Ok(guard.has_key())
-    }
-
-    xpcom_method!(encrypt_with_ad => EncryptWithAd(ad: *const ThinVec<u8>, plaintext: *const ThinVec<u8>) -> ThinVec<u8>);
-    fn encrypt_with_ad(&self, ad: &ThinVec<u8>, plaintext: &ThinVec<u8>) -> Result<ThinVec<u8>> {
-        let mut guard = self.get_self()?;
-        let ct = guard.encrypt_with_ad(ad, plaintext)?;
-        Ok(ThinVec::from(ct))
-    }
-
-    xpcom_method!(decrypt_with_ad => DecryptWithAd(ad: *const ThinVec<u8>, ciphertext: *const ThinVec<u8>) -> ThinVec<u8>);
-    fn decrypt_with_ad(&self, ad: &ThinVec<u8>, ciphertext: &ThinVec<u8>) -> Result<ThinVec<u8>> {
-        let mut guard = self.get_self()?;
-        let pt = guard.decrypt_with_ad(ad, ciphertext)?;
-        Ok(ThinVec::from(pt))
     }
 }
