@@ -14,7 +14,7 @@ use nss_rs::SymKey;
 /// [0]: https://noiseprotocol.org/noise.html#the-cipherstate-object
 #[derive(Default)]
 pub struct CipherState {
-    pub(crate) k: Option<SymKey>,
+    k: Option<SymKey>,
     n: u64,
 }
 
