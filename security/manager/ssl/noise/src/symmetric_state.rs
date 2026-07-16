@@ -51,8 +51,7 @@ impl SymmetricState {
     pub fn mix_hash(&mut self, data: &[u8]) -> Result<()> {
         // TODO: replace hash() with something that accepts multiple buffers as inputs
         let mut d = self.h.clone();
-        d.reserve(data.len());
-        d[self.h.len()..].copy_from_slice(data);
+        d.extend_from_slice(data);
         self.h = Sha256::hash(data)?;
         Ok(())
     }

@@ -108,4 +108,16 @@ impl CipherState {
         self.n += 1;
         Ok(plaintext)
     }
+
+    pub(crate) fn key_eq(&self, other: &Self) -> Result<bool> {
+        match (&self.k, &other.k) {
+            (None, None) => Ok(true),
+            (Some(s), Some(o)) => {
+                let s = s.key_data().map_err(|_| NS_ERROR_FAILURE)?;
+                let o = o.key_data().map_err(|_| NS_ERROR_FAILURE)?;
+                Ok(s == o)
+            }
+            _ => Ok(false),
+        }
+    }
 }

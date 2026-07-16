@@ -87,6 +87,10 @@ impl Channel {
     pub fn set_writer_nonce(&mut self, nonce: u64) {
         self.writer.set_nonce(nonce);
     }
+
+    pub fn is_counterparty(&self, other: &Channel) -> Result<bool> {
+        Ok(self.reader.key_eq(&other.writer)? && self.writer.key_eq(&other.reader)?)
+    }
 }
 
 /// XPCOM wrapper for [`Channel`].

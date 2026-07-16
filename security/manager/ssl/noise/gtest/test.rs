@@ -11,7 +11,10 @@ extern crate noise;
 extern crate nss_rs;
 
 use noise::*;
-use nss_rs::aead::Aead;
+use nss_rs::{
+    aead::Aead,
+    ec::{EcCurve, ecdh_keygen},
+};
 use std::{ffi::CString, os::raw::c_char};
 
 fn nonfatal_fail(msg: String) {
@@ -140,5 +143,33 @@ pub extern "C" fn Rust_NoiseChannelConsistency() {
 }
 
 #[no_mangle]
-pub extern "C" fn Rust_NoiseHdkf() {
+pub extern "C" fn Rust_NoiseHandshake() {
+    let identity_key = ecdh_keygen(&EcCurve::P256).expect("identity_key");
+    let identity_pub = identity_key.public.key_data().expect("identity_pub");
+    expect_eq!(65, identity_pub.len());
+    let psk = [0; 32];
+
+    let (initiator_hs, initiator_msg) =
+        HandshakeState::initial_handshake_message(&psk, Some(identity_key), None).expect("initial_handshake_message");
+
+    let (mut responder_channel, responder_msg) = HandshakeState::build_responder(
+        None,
+        &psk,
+        Some(identity_pub.as_slice().try_into().unwrap()),
+        &initiator_msg,
+    )
+    .expect("build_responder");
+
+    let (mut initiator_channel, handshake_hash) = initiator_hs
+        .process_handshake_response(&responder_msg)
+        .expect("process_handshake_response");
+
+    expect_eq!(true, initiator_channel.is_counterparty(&responder_channel).expect("is_counterparty"));
+
+    const MSG: &[u8] = b"Hello world!";
+    let ct = responder_channel.encrypt(MSG).unwrap();
+    expect_ne!(MSG, ct.as_slice());
+
+    let pt = initiator_channel.decrypt(&ct).unwrap();
+    expect_eq!(MSG, pt.as_slice());
 }

@@ -17,3 +17,6 @@ TEST_F(psm_Noise, ChannelEncryptDecrypt) { Rust_NoiseChannelEncryptDecrypt(); }
 
 extern "C" void Rust_NoiseChannelConsistency();
 TEST_F(psm_Noise, ChannelConsistency) { Rust_NoiseChannelConsistency(); }
+
+extern "C" void Rust_NoiseHandshake();
+TEST_F(psm_Noise, Handshake) { Rust_NoiseHandshake(); }
