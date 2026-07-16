@@ -4,17 +4,9 @@
 
 //! Noise handshakes
 
+use crate::{Channel, Result, SymmetricState, cipher::sec1_ec2_key_to_der};
 use nserror::NS_ERROR_FAILURE;
-use nss_rs::{
-    PublicKey,
-    aead::NONCE_LEN,
-    ec::{EcCurve, EcdhKeypair, ecdh, ecdh_keygen, import_ec_public_key_from_spki},
-};
-
-use crate::{
-    Channel, Result, SymmetricState,
-    cipher::{pad_len, sec1_ec2_key_to_der},
-};
+use nss_rs::ec::{EcCurve, EcdhKeypair, ecdh, ecdh_keygen, import_ec_public_key_from_spki};
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum HandshakeType {
@@ -204,7 +196,7 @@ impl HandshakeState {
             ss.mix_key(&es_key)?;
         }
 
-        let pt = ss.decrypt_and_hash(message)?;
+        let pt = ss.decrypt_and_hash(ct)?;
         assert!(pt.is_empty());
 
         let ephemeral_key = ecdh_keygen(&EcCurve::P256).map_err(|_| NS_ERROR_FAILURE)?;

@@ -7,7 +7,7 @@
 //! <https://noiseprotocol.org/noise.html#hash-functions>
 
 use crate::Result;
-use nserror::{NS_ERROR_FAILURE, NS_ERROR_UNEXPECTED};
+use nserror::NS_ERROR_FAILURE;
 use nss_rs::{
     SymKey,
     hash::{HashAlgorithm, hash},
