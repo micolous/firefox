@@ -88,6 +88,9 @@ impl Channel {
         self.writer.set_nonce(nonce);
     }
 
+    /// Returns `true` if this [`Channel`] is a counterparty of `other`.
+    ///
+    /// ie: the reader key of `self` is the same as the writer key of the `other`, and vice versa.
     pub fn is_counterparty(&self, other: &Channel) -> Result<bool> {
         Ok(self.reader.key_eq(&other.writer)? && self.writer.key_eq(&other.reader)?)
     }

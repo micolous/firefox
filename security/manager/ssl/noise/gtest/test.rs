@@ -91,6 +91,8 @@ pub extern "C" fn Rust_NoiseChannelEncryptDecrypt() {
     let mut bob = Channel::new(key1.clone(), key0.clone());
     let mut corrupted = Channel::new(key1, key0);
 
+    expect_eq!(true, alice.is_counterparty(&bob).expect("is_counterparty"));
+
     for l in 0..512 {
         let msg = vec![0xff; l];
 
@@ -124,6 +126,8 @@ pub extern "C" fn Rust_NoiseChannelConsistency() {
 
     let mut alice = Channel::new(key0.clone(), key1.clone());
     let mut bob = Channel::new(key1.clone(), key0.clone());
+
+    expect_eq!(true, alice.is_counterparty(&bob).expect("is_counterparty"));
 
     let msg = b"The quick brown fox jumps over the lazy dog.";
     let expected_crypted = [
