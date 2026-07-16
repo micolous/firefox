@@ -13,9 +13,16 @@ extern crate xpcom;
 mod channel;
 mod cipher;
 mod cipher_state;
+mod handshake;
+mod hash;
+mod symmetric_state;
+
 use nss_rs::aead::AeadAlgorithms;
 
-pub use crate::{cipher_state::CipherState, channel::Channel};
+pub use crate::{
+    channel::Channel, cipher_state::CipherState, handshake::HandshakeState,
+    symmetric_state::SymmetricState,
+};
 
 pub type Result<T = ()> = std::result::Result<T, nserror::nsresult>;
 pub const ALG: AeadAlgorithms = AeadAlgorithms::Aes256Gcm;

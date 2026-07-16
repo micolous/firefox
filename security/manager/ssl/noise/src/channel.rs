@@ -30,6 +30,13 @@ impl Channel {
         }
     }
 
+    pub fn new_with_key_bytes(read_key: &[u8; 32], write_key: &[u8; 32]) -> Result<Self> {
+        Ok(Self {
+            reader: CipherState::new_with_key_bytes(read_key)?,
+            writer: CipherState::new_with_key_bytes(write_key)?,
+        })
+    }
+
     pub fn encrypt(&mut self, plaintext: &[u8]) -> Result<Vec<u8>> {
         if !self.has_keys() {
             // The spec says to return plaintext, but this is dangerous.

@@ -3,11 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use crate::{
-    Result,
+    ALG, Result,
     cipher::{decrypt, encrypt},
 };
 use nserror::{NS_ERROR_DOM_INVALID_STATE_ERR, NS_ERROR_FAILURE};
-use nss_rs::SymKey;
+use nss_rs::{SymKey, aead::Aead};
 
 /// [Noise `CipherState`][0] object.
 ///
@@ -23,10 +23,21 @@ impl CipherState {
         Self { k: Some(key), n: 0 }
     }
 
+    pub fn new_with_key_bytes(key: &[u8; 32]) -> Result<Self> {
+        let key = Aead::import_key(ALG, key).map_err(|_| NS_ERROR_FAILURE)?;
+        Ok(Self::new_with_key(key))
+    }
+
     /// > Sets `k` = `key`. Sets `n` =  `0`.
     pub fn initialize_key(&mut self, key: SymKey) {
         self.k = Some(key);
         self.n = 0;
+    }
+
+    pub fn initialize_key_bytes(&mut self, key: &[u8; 32]) -> Result<()> {
+        let key = Aead::import_key(ALG, key).map_err(|_| NS_ERROR_FAILURE)?;
+        self.initialize_key(key);
+        Ok(())
     }
 
     /// > Returns `true` if `k` is non-empty, `false` otherwise.

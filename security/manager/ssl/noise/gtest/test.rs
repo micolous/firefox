@@ -138,3 +138,7 @@ pub extern "C" fn Rust_NoiseChannelConsistency() {
     let decrypted = bob.decrypt(&crypted).unwrap();
     assert_eq!(msg, decrypted.as_slice());
 }
+
+#[no_mangle]
+pub extern "C" fn Rust_NoiseHdkf() {
+}

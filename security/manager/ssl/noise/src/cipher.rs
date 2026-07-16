@@ -7,15 +7,16 @@
 //! <https://noiseprotocol.org/noise.html#cipher-functions>
 
 use crate::Result;
-use nserror::NS_ERROR_FAILURE;
+use nserror::{NS_ERROR_FAILURE, NS_ERROR_INVALID_ARG};
 use nss_rs::{
     SymKey,
     aead::{Aead, AeadAlgorithms, Mode, NONCE_LEN},
+    der,
 };
 
 const PADDING_MUL: usize = 32;
 
-const fn pad_len(len: usize) -> usize {
+pub const fn pad_len(len: usize) -> usize {
     let o = (len + PADDING_MUL) & !(PADDING_MUL - 1);
     debug_assert!(o > len);
     o
@@ -60,7 +61,9 @@ pub fn decrypt(k: &SymKey, n: u64, aad: &[u8], ciphertext: &[u8]) -> Result<Vec<
     let mut aead = Aead::new(Mode::Decrypt, AeadAlgorithms::Aes256Gcm, k, nonce)
         .map_err(|_| NS_ERROR_FAILURE)?;
 
-    let mut pt = aead.decrypt(aad, 0, ciphertext).map_err(|_| NS_ERROR_FAILURE)?;
+    let mut pt = aead
+        .decrypt(aad, 0, ciphertext)
+        .map_err(|_| NS_ERROR_FAILURE)?;
 
     let padding_len = pt.last().copied().ok_or(NS_ERROR_FAILURE)? as usize + 1;
     if padding_len > pt.len() || padding_len > PADDING_MUL {
@@ -70,4 +73,33 @@ pub fn decrypt(k: &SymKey, n: u64, aad: &[u8], ciphertext: &[u8]) -> Result<Vec<
 
     pt.truncate(pt.len() - padding_len);
     Ok(pt)
+}
+
+pub fn sec1_ec2_key_to_der(key: &[u8; 65]) -> Result<Vec<u8>> {
+    if key[0] != 0x04 {
+        // incorrect curve
+        return Err(NS_ERROR_INVALID_ARG);
+    }
+
+    // TODO: The start of the DER encoding is static, so we could
+    // just prepend a fixed header to the raw key bytes to make it DER.
+
+    // SubjectPublicKeyInfo
+    der::sequence(&[
+        // algorithm: AlgorithmIdentifier
+        &der::sequence(&[
+            // algorithm
+            &der::object_id(der::OID_EC_PUBLIC_KEY_BYTES).map_err(|_| NS_ERROR_FAILURE)?,
+            // parameters
+            &der::object_id(der::OID_SECP256R1_BYTES).map_err(|_| NS_ERROR_FAILURE)?,
+        ])
+        .map_err(|_| NS_ERROR_FAILURE)?,
+        // subjectPublicKey
+        &der::bit_string(
+            // SEC 1 uncompressed format
+            key,
+        )
+        .map_err(|_| NS_ERROR_FAILURE)?,
+    ])
+    .map_err(|_| NS_ERROR_FAILURE)
 }
