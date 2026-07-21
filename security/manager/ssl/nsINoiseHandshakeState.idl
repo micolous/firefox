@@ -1,0 +1,61 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#include "nsISupports.idl"
+#include "nsINoiseChannel.idl"
+
+/**
+ * Noise initiator handshake interface, used for WebAuthn over Hybrid/caBLE
+ * transports.
+ */
+[scriptable, uuid(969ef799-b1aa-4d8e-8342-6a418031c777)]
+interface nsINoiseHandshakeState : nsISupports
+{
+    /**
+     * 
+     */
+    void processHandshakeResponse(
+        in Array<octet> peerHandshakeMessage,
+        out nsINoiseChannel channel,
+        out Array<octet> handshakeHash
+    );
+};
+
+[scriptable, uuid(77fd8828-d6b9-4de6-8223-d8bfe670d0d6)]
+interface nsINoiseHandshakeInitialMessageResult : nsISupports
+{
+    readonly attribute nsINoiseHandshakeState state;
+    readonly attribute Array<octet> initialMessage;
+};
+
+
+%{C++
+/**
+ * Start a Noise handshake for caBLE as the initiator.
+ *
+ * * `aPsk`: pre-shared key, must be a buffer that is exactly 32 bytes long.
+ * * `aIsLocalIdentity`: if `true`, treat `aIdentity` as a local identity, otherwise the peer
+ *   identity.
+ * * `aIdentity`: if this is the local identity, this is a DER-encoded EC private key in DER format.
+ *   If this is the peer identity, this is a raw, 65 byte public key in SEC1 format.
+ * * `aIdentityLength`: the length of the `aIdentity` buffer, in bytes.
+ * * `aOutResult`: pointer for the response.
+ */
+nsresult NS_NoiseHandshakeInitialMessage(
+    const char** aPsk,
+    bool aIsLocalIdentity,
+    const char** aIdentity,
+    uint32_t aIdentityLength,
+    nsINoiseHandshakeInitialMessageResult** aOutResult
+);
+
+nsresult NS_NoiseHandshakeBuildResponder(
+    const char** aPsk,
+    bool aIsLocalIdentity,
+    const char** aIdentity,
+    uint32_t aIdentityLength,
+    nsINoiseChannel** aOutChannel,
+    nsTArray<uint8_t>** aOutResponse
+);
+%}
