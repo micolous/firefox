@@ -1,0 +1,50 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#include "nsISupports.idl"
+
+/**
+ * Noise post-handshake transport interface, built with a pair of CipherState
+ * objects.
+ *
+ * Messages must be decrypted in the same order that they were encrypted.
+ *
+ * https://noiseprotocol.org/noise.html#the-cipherstate-object
+ * https://noiseprotocol.org/noise.html#the-symmetricstate-object
+ */
+
+[scriptable, uuid(44147a85-3d83-4fa5-b165-bb1f334b1ea4)]
+interface nsINoiseChannel : nsISupports
+{
+    /**
+     * `true` if both reader and writer keys are set, allowing this channel to
+     * encrypt and decrypt data.
+     */
+    readonly attribute boolean hasKeys;
+
+    /**
+     * Intialize this channel with read and write keys (derived from a
+     * Noise handshake), and reset both nonces to 0.
+     *
+     * Both keys must be exactly 32 bytes long.
+     */
+    void initializeKeys(in Array<octet> aReadKey, in Array<octet> aWriteKey);
+
+    /**
+     * Encrypt plaintext using this channel's writer, and increment the
+     * writer nonce.
+     *
+     * If this channel does not have any keys set, this will return an error.
+     */
+    Array<octet> encrypt(in Array<octet> aPlainText);
+
+    /**
+     * Decrypt ciphertext using this channel's reader key and nonce, and then
+     * increment the reader nonce on successful decryption.
+     *
+     * Returns an error if the channel is missing keys, or the data cannot be
+     * decrypted.
+     */
+    Array<octet> decrypt(in Array<octet> aCipherText);
+};
