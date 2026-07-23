@@ -11,7 +11,10 @@ extern crate noise;
 extern crate nss_rs;
 
 use noise::*;
-use nss_rs::aead::Aead;
+use nss_rs::{
+    aead::Aead,
+    ec::{ecdh_keygen, EcCurve},
+};
 use std::{ffi::CString, os::raw::c_char};
 
 fn nonfatal_fail(msg: String) {
@@ -172,4 +175,246 @@ pub extern "C" fn Rust_NoiseChannelConsistency() {
     let decrypted = bob.decrypt(&crypted).unwrap();
     assert_eq!(msg, decrypted.as_slice());
     expect_eq!(true, alice.is_counterparty(&bob));
+}
+
+/// Test KNpsk0 flow (QR-initiated transaction)
+#[no_mangle]
+pub extern "C" fn Rust_NoiseHandshakeKNpsk0() {
+    let initiator_identity = ecdh_keygen(&EcCurve::P256).expect("initiator_identity");
+    let initiator_pub = initiator_identity.public.key_data().expect("initiator_pub");
+    expect_eq!(65, initiator_pub.len());
+    expect_eq!(4, initiator_pub[0]);
+    let psk = nss_rs::random();
+
+    let (initiator_hs, initiator_msg) =
+        HandshakeState::<Sha256>::initial_handshake_message(&psk, Some(initiator_identity), None)
+            .expect("initial_handshake_message");
+
+    let (mut responder_channel, responder_msg) = HandshakeState::<Sha256>::build_responder(
+        &psk,
+        None,
+        Some(initiator_pub.as_slice().try_into().unwrap()),
+        &initiator_msg,
+    )
+    .expect("build_responder");
+
+    let (mut initiator_channel, _) = initiator_hs
+        .process_handshake_response(&responder_msg)
+        .expect("process_handshake_response");
+
+    // There's no point in continuing if the channels are not counterparties.
+    assert!(
+        initiator_channel.is_counterparty(&responder_channel),
+        "initiator and responder must be counterparties",
+    );
+
+    // responder -> initiator
+    let msg = b"Hi initiator!";
+    let ct = responder_channel.encrypt(msg).unwrap();
+    expect_ne!(msg, ct.as_slice());
+
+    let pt = initiator_channel.decrypt(&ct).unwrap();
+    expect_eq!(msg, pt.as_slice());
+
+    // Decrypting the responder's message again should fail
+    expect_eq!(true, initiator_channel.decrypt(&ct).is_err());
+
+    // initiator -> responder
+    let msg = b"G'day, responder!";
+    let ct = initiator_channel.encrypt(msg).unwrap();
+    expect_ne!(msg, ct.as_slice());
+
+    let pt = responder_channel.decrypt(&ct).unwrap();
+    expect_eq!(msg, pt.as_slice());
+
+    // Decrypting the initiator's message again should fail
+    expect_eq!(true, responder_channel.decrypt(&ct).is_err());
+}
+
+/// Test NKpsk0 flow (state-assisted transaction)
+#[no_mangle]
+pub extern "C" fn Rust_NoiseHandshakeNKpsk0() {
+    let initiator_identity = ecdh_keygen(&EcCurve::P256).expect("initiator_identity");
+    let initiator_pub = initiator_identity.public.key_data().expect("initiator_pub");
+    expect_eq!(65, initiator_pub.len());
+    expect_eq!(4, initiator_pub[0]);
+
+    let responder_identity = ecdh_keygen(&EcCurve::P256).expect("responder_identity");
+    let responder_pub = responder_identity.public.key_data().expect("responder_pub");
+    expect_eq!(65, responder_pub.len());
+    expect_eq!(4, responder_pub[0]);
+
+    let psk = nss_rs::random();
+
+    let (initiator_hs, initiator_msg) = HandshakeState::<Sha256>::initial_handshake_message(
+        &psk,
+        Some(initiator_identity),
+        Some(responder_pub.as_slice().try_into().unwrap()),
+    )
+    .expect("initial_handshake_message");
+
+    let (mut responder_channel, responder_msg) = HandshakeState::<Sha256>::build_responder(
+        &psk,
+        Some(responder_identity),
+        Some(initiator_pub.as_slice().try_into().unwrap()),
+        &initiator_msg,
+    )
+    .expect("build_responder");
+
+    let (mut initiator_channel, _) = initiator_hs
+        .process_handshake_response(&responder_msg)
+        .expect("process_handshake_response");
+
+    // There's no point in continuing if the channels are not counterparties.
+    assert!(
+        initiator_channel.is_counterparty(&responder_channel),
+        "initiator and responder must be counterparties",
+    );
+
+    // responder -> initiator
+    let msg = b"Hi initiator!";
+    let ct = responder_channel.encrypt(msg).unwrap();
+    expect_ne!(msg, ct.as_slice());
+
+    let pt = initiator_channel.decrypt(&ct).unwrap();
+    expect_eq!(msg, pt.as_slice());
+
+    // initiator -> responder
+    let msg = b"G'day, responder!";
+    let ct = initiator_channel.encrypt(msg).unwrap();
+    expect_ne!(msg, ct.as_slice());
+
+    let pt = responder_channel.decrypt(&ct).unwrap();
+    expect_eq!(msg, pt.as_slice());
+}
+
+/// Test NKpsk0 flow (state-assisted transaction) with no initiator identity
+#[no_mangle]
+pub extern "C" fn Rust_NoiseHandshakeNKpsk0NoInitiatorIdentity() {
+    let responder_identity = ecdh_keygen(&EcCurve::P256).expect("responder_identity");
+    let responder_pub = responder_identity.public.key_data().expect("responder_pub");
+    expect_eq!(65, responder_pub.len());
+    expect_eq!(4, responder_pub[0]);
+
+    let psk = nss_rs::random();
+
+    let (initiator_hs, initiator_msg) = HandshakeState::<Sha256>::initial_handshake_message(
+        &psk,
+        None,
+        Some(responder_pub.as_slice().try_into().unwrap()),
+    )
+    .expect("initial_handshake_message");
+
+    let (mut responder_channel, responder_msg) = HandshakeState::<Sha256>::build_responder(
+        &psk,
+        Some(responder_identity),
+        None,
+        &initiator_msg,
+    )
+    .expect("build_responder");
+
+    let (mut initiator_channel, _) = initiator_hs
+        .process_handshake_response(&responder_msg)
+        .expect("process_handshake_response");
+
+    // There's no point in continuing if the channels are not counterparties.
+    assert!(
+        initiator_channel.is_counterparty(&responder_channel),
+        "initiator and responder must be counterparties",
+    );
+
+    // responder -> initiator
+    let msg = b"Hi initiator!";
+    let ct = responder_channel.encrypt(msg).unwrap();
+    expect_ne!(msg, ct.as_slice());
+
+    let pt = initiator_channel.decrypt(&ct).unwrap();
+    expect_eq!(msg, pt.as_slice());
+
+    // initiator -> responder
+    let msg = b"G'day, responder!";
+    let ct = initiator_channel.encrypt(msg).unwrap();
+    expect_ne!(msg, ct.as_slice());
+
+    let pt = responder_channel.decrypt(&ct).unwrap();
+    expect_eq!(msg, pt.as_slice());
+}
+
+/// Test incorrect psk flows
+#[no_mangle]
+pub extern "C" fn Rust_NoiseHandshakeErrors() {
+    let initiator_identity = ecdh_keygen(&EcCurve::P256).expect("initiator_identity");
+    let initiator_pub: [u8; 65] = initiator_identity
+        .public
+        .key_data()
+        .expect("initiator_pub")
+        .try_into()
+        .unwrap();
+    expect_eq!(4, initiator_pub[0]);
+
+    let responder_identity = ecdh_keygen(&EcCurve::P256).expect("responder_identity");
+    let responder_pub: [u8; 65] = responder_identity
+        .public
+        .key_data()
+        .expect("responder_pub")
+        .try_into()
+        .unwrap();
+    expect_eq!(4, responder_pub[0]);
+
+    let psk = nss_rs::random();
+
+    // Missing key arguments
+    expect_eq!(
+        true,
+        HandshakeState::<Sha256>::initial_handshake_message(&psk, None, None).is_err()
+    );
+    let fake: [u8; 128] = nss_rs::random();
+    expect_eq!(
+        true,
+        HandshakeState::<Sha256>::build_responder(&psk, None, None, &fake).is_err()
+    );
+
+    let (initiator_hs, mut initiator_msg) =
+        HandshakeState::<Sha256>::initial_handshake_message(&psk, Some(initiator_identity), None)
+            .expect("initial_handshake_message");
+
+    // Invalid initiator message
+    assert_eq!(
+        true,
+        HandshakeState::<Sha256>::build_responder(
+            &psk,
+            None,
+            Some(&initiator_pub),
+            &initiator_msg[..64],
+        )
+        .is_err()
+    );
+
+    // Set invalid point form
+    expect_eq!(4, initiator_msg[0]);
+    initiator_msg[0] = 1;
+    assert_eq!(true, HandshakeState::<Sha256>::build_responder(
+        &psk,
+        None,
+        Some(&initiator_pub),
+        &initiator_msg,
+    ).is_err());
+
+    // Reset point form
+    initiator_msg[0] = 4;
+    let (_, mut responder_msg) =
+        HandshakeState::<Sha256>::build_responder(&psk, None, Some(&initiator_pub), &initiator_msg)
+            .expect("build_responder");
+
+    // Return an incorrect responder message.
+    // We can only do this once, because process_handshake_response mutates internal state.
+    // Set invalid point form
+    expect_eq!(4, responder_msg[0]);
+    responder_msg[0] = 1;
+    expect_eq!(
+        true,
+        initiator_hs
+            .process_handshake_response(&responder_msg)
+            .is_err()
+    );
 }

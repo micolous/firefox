@@ -7,10 +7,10 @@
 //! <https://noiseprotocol.org/noise.html#cipher-functions>
 
 use crate::Result;
-use nserror::NS_ERROR_FAILURE;
+use nserror::{NS_ERROR_FAILURE, NS_ERROR_INVALID_ARG};
 use nss_rs::{
     aead::{Aead, AeadAlgorithms, Mode, NONCE_LEN},
-    SymKey,
+    der, SymKey,
 };
 
 const PADDING_MUL: usize = 32;
@@ -72,4 +72,59 @@ pub fn decrypt(k: &SymKey, n: u64, aad: &[u8], ciphertext: &[u8]) -> Result<Vec<
 
     pt.truncate(pt.len() - padding_len);
     Ok(pt)
+}
+
+pub const P256_X962_LENGTH: usize = 65;
+const P256_X962_DER_LENGTH: usize = SECP256R1_DER_PUBKEY_HEADER.len() + P256_X962_LENGTH;
+
+/// Static DER header for an uncompressed SEC.1 P-256 point in DER format.
+// TODO: rewrite with `concat_bytes!` once stable
+const SECP256R1_DER_PUBKEY_HEADER: [u8; 26] = [
+    // SubjectPublicKeyInfo
+    der::TAG_SEQUENCE,
+    (24 + P256_X962_LENGTH) as u8,
+    // algorithm: AlgorithmIdentifier
+    der::TAG_SEQUENCE,
+    0x13,
+    // algorithm
+    der::TAG_OBJECT_ID,
+    0x07,
+    // OID_EC_PUBLIC_KEY_BYTES
+    0x2a,
+    0x86,
+    0x48,
+    0xce,
+    0x3d,
+    0x02,
+    0x01,
+    // parameters
+    der::TAG_OBJECT_ID,
+    0x08,
+    // OID_SECP256R1_BYTES
+    0x2a,
+    0x86,
+    0x48,
+    0xce,
+    0x3d,
+    0x03,
+    0x01,
+    0x07,
+    // subjectPublicKey
+    der::TAG_BIT_STRING,
+    (P256_X962_LENGTH + 1) as u8,
+    0x00,
+];
+
+/// Convert an uncompressed SEC.1 P-256 point into DER format for NSS.
+pub fn sec1_ec2_key_to_der(key: &[u8; P256_X962_LENGTH]) -> Result<Vec<u8>> {
+    if key[0] != 0x04 {
+        // incorrect format
+        return Err(NS_ERROR_INVALID_ARG);
+    }
+
+    let mut o = Vec::with_capacity(P256_X962_DER_LENGTH);
+    o.extend_from_slice(&SECP256R1_DER_PUBKEY_HEADER);
+    o.extend_from_slice(key);
+
+    Ok(o)
 }

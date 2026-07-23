@@ -8,6 +8,7 @@ license = "MPL-2.0"
 [dependencies]
 libc = "0.2"
 nserror = { path = "../../../../xpcom/rust/nserror" }
+sha2 = "0.10.2"
 thin-vec = { version = "0.2.1", features = ["gecko-ffi"] }
 xpcom = { path = "../../../../xpcom/rust/xpcom" }
 

@@ -1,0 +1,87 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#include "nsISupports.idl"
+#include "nsINoiseChannel.idl"
+
+/**
+ * Noise initiator handshake interface, used for WebAuthn over Hybrid/caBLE
+ * transports.
+ */
+[scriptable, uuid(969ef799-b1aa-4d8e-8342-6a418031c777)]
+interface nsINoiseHandshakeState : nsISupports
+{
+    /**
+     * `true` if the handshake state has been "consumed", and so any
+     * `processHandshakeResponse` call will fail.
+     */
+    readonly attribute boolean consumed;
+
+    /**
+     * Complete a Noise `KNpsk0_P256_AESGCM_SHA256` handshake as the initiating
+     * party.
+     *
+     * This mutates internal state, even on errors, so can only be called once.
+     * After the first call, this will always return errors, and the `consumed`
+     * attribute will be set to `true`.
+     *
+     * @param aResponseMessage [in]  message from the responder
+     * @param aChannel         [out] Noise channel for further communication
+     *                               with the remote peer after the handshake
+     *                               has completed
+     * @param aHandshakeHash   [out] handshake hash
+     */
+    void processHandshakeResponse(
+        in Array<octet> aResponseMessage,
+        out nsINoiseChannel aChannel,
+        out Array<octet> aHandshakeHash
+    );
+};
+
+/**
+ * Noise handshake service singleton.
+ */
+[scriptable, uuid(27cd5d83-2778-40dd-9298-10676f830186)]
+interface nsINoiseHandshakeService : nsISupports
+{
+    /**
+     * Start a Noise `KNpsk0_P256_AESGCM_SHA256` handshake as the initiating
+     * party.
+     *
+     * @param aPsk            [in]  32-byte pre-shared key, negotiated
+     *                              out-of-band
+     * @param aLocalIdentity  [in]  local ECDH keypair, encoded in DER
+     * @param aHandshakeState [out] nsINoiseHandshakeState for processing the
+     *                              response from the responder
+     * @param aInitialMessage [out] initial message to be sent to the responder
+     */
+    void initialKNpsk0HandshakeMessage(
+        in Array<octet> aPsk,
+        in Array<octet> aLocalIdentity,
+        out nsINoiseHandshakeState aHandshakeState,
+        out Array<octet> aInitialMessage
+    );
+
+    /**
+     * Complete a noise `KNpsk0_P256_AESGCM_SHA256` handshake as the responding
+     * party.
+     *
+     * @param aPsk             [in]  32-byte pre-shared key, negotiated
+     *                               out-of-band
+     * @param aPeerPubKey      [in]  remote peer's public key, as an
+     *                               uncompressed, X9.62 P-256 point
+     * @param aInitialMessage  [in]  initial message from the initiator
+     * @param aChannel         [out] Noise channel for further communication
+     *                               with the remote peer after the handshake
+     *                               has completed
+     * @param aResponseMessage [out] response message to sent to the initiator
+     */
+    void buildKNpsk0Responder(
+        in Array<octet> aPsk,
+        in Array<octet> aPeerPubKey,
+        in Array<octet> aInitialMessage,
+        out nsINoiseChannel aChannel,
+        out Array<octet> aResponseMessage
+    );
+};

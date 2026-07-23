@@ -250,6 +250,8 @@ run-sequentially = ["true"] # hardcoded ports
 
 ["test_noise_channel.js"]
 
+["test_noise_handshake.js"]
+
 ["test_nonascii_path.js"]
 
 ["test_nsCertType.js"]

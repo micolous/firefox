@@ -18,6 +18,7 @@ XPIDL_SOURCES += [
     "nsIDataStorage.idl",
     "nsIFIPSUtils.idl",
     "nsINoiseChannel.idl",
+    "nsINoiseHandshake.idl",
     "nsINSSComponent.idl",
     "nsINSSErrorsService.idl",
     "nsINSSVersion.idl",
