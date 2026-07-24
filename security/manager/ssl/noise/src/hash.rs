@@ -6,11 +6,17 @@
 //!
 //! <https://noiseprotocol.org/noise.html#hash-functions>
 
+use std::ffi::c_uint;
+
 use crate::{HandshakeType, Result};
-use nserror::NS_ERROR_FAILURE;
-use nss_rs::hkdf::{Hkdf, HkdfAlgorithm};
-use sha2::Digest;
+use nserror::{NS_ERROR_FAILURE, NS_ERROR_INVALID_ARG};
+use nss_rs::{
+    hkdf::{Hkdf, HkdfAlgorithm},
+    p11, IntoResult as _, SECItemBorrowed, SymKey,
+};
+use pkcs11_bindings::CKA_SIGN;
 pub use sha2::Sha256;
+use sha2::{digest, Digest};
 
 /// [Noise Hash trait][0].
 ///
@@ -25,6 +31,9 @@ pub trait Hash: Digest {
     /// NSS HKDF algorithm for the hash.
     const HKDF_ALGORITHM: HkdfAlgorithm;
 
+    /// NSS HMAC algorithm for the hash.
+    const HMAC_ALGORITHM: p11::CK_MECHANISM_TYPE;
+
     /// A constant specifying the size in bytes of the hash output. Must be either 32 or 64 bytes.
     fn hash_len() -> usize {
         <Self as Digest>::output_size()
@@ -32,10 +41,73 @@ pub trait Hash: Digest {
 
     /// Get a Noise protocol name identifier for the handshake.
     fn protocol_name(ht: HandshakeType) -> &'static [u8];
+
+    /// Noise version of `HKDF(chaining_key, ikm, num_outputs)`.
+    ///
+    /// `num_outputs` is the number of keys (outputs) to derive.
+    ///
+    /// Returns a buffer of `Hash::HASHLEN * num_outputs` bytes.
+    fn hkdf(salt: &[u8], ikm: &[u8], num_outputs: usize) -> Result<Vec<u8>> {
+        let len = num_outputs * Self::hash_len();
+        Self::hkdf_bytes(salt, ikm, &[], len)
+    }
+
+    ///
+    fn hkdf_bytes(salt: &[u8], ikm: &[u8], info: &[u8], len: usize) -> Result<Vec<u8>> {
+        let hkdf = Hkdf::new(Self::HKDF_ALGORITHM);
+        let ikm = hkdf.import_secret(ikm).map_err(|_| NS_ERROR_FAILURE)?;
+        let prk = hkdf.extract(salt, &ikm).map_err(|_| NS_ERROR_FAILURE)?;
+        let r = hkdf
+            .expand_data(&prk, info, len)
+            .map_err(|_| NS_ERROR_FAILURE)?;
+
+        if r.len() != len {
+            Err(NS_ERROR_FAILURE)
+        } else {
+            Ok(r)
+        }
+    }
+
+    fn hmac(key: &SymKey, data: &[u8]) -> Result<digest::Output<Self>> {
+        // TODO: upstream this as nss_rs::hmac imports the key each time
+        let data_len = c_uint::try_from(data.len()).map_err(|_| NS_ERROR_INVALID_ARG)?;
+
+        let param = SECItemBorrowed::make_empty();
+        let context = unsafe {
+            p11::PK11_CreateContextBySymKey(Self::HMAC_ALGORITHM, CKA_SIGN, **key, param.as_ref())
+        }
+        .into_result()
+        .map_err(|_| NS_ERROR_FAILURE)?;
+
+        unsafe { p11::PK11_DigestOp(*context, data.as_ptr(), data_len) }
+            .into_result()
+            .map_err(|_| NS_ERROR_FAILURE)?;
+
+        let mut digest: digest::Output<Self> = Default::default();
+        let mut digest_len = 0;
+
+        unsafe {
+            p11::PK11_DigestFinal(
+                *context,
+                digest.as_mut_ptr(),
+                &raw mut digest_len,
+                digest.len() as u32,
+            )
+        }
+        .into_result()
+        .map_err(|_| NS_ERROR_FAILURE)?;
+
+        if digest_len as usize != digest.len() {
+            return Err(NS_ERROR_FAILURE);
+        }
+
+        Ok(digest)
+    }
 }
 
 impl Hash for Sha256 {
     const HKDF_ALGORITHM: HkdfAlgorithm = HkdfAlgorithm::HKDF_SHA2_256;
+    const HMAC_ALGORITHM: p11::CK_MECHANISM_TYPE = p11::CKM_SHA256_HMAC as p11::CK_MECHANISM_TYPE;
 
     fn protocol_name(ht: HandshakeType) -> &'static [u8] {
         // TODO: this doesn't allow for other ciphers, but these are the only
@@ -43,33 +115,6 @@ impl Hash for Sha256 {
         match ht {
             HandshakeType::KNpsk0 => b"Noise_KNpsk0_P256_AESGCM_SHA256",
             HandshakeType::NKpsk0 => b"Noise_NKpsk0_P256_AESGCM_SHA256",
-        }
-    }
-}
-
-pub trait HashHkdf {
-    /// Noise version of `HKDF(chaining_key, ikm, num_outputs)`.
-    ///
-    /// `count` is the number of keys (outputs) to derive.
-    ///
-    /// Returns a buffer of `Hash::HASHLEN * count` bytes.
-    fn hkdf(salt: &[u8], ikm: &[u8], count: usize) -> Result<Vec<u8>>;
-}
-
-impl<HASH: Hash> HashHkdf for HASH {
-    fn hkdf(salt: &[u8], ikm: &[u8], count: usize) -> Result<Vec<u8>> {
-        let len = count * HASH::hash_len();
-        let hkdf = Hkdf::new(HASH::HKDF_ALGORITHM);
-        let ikm = hkdf.import_secret(ikm).map_err(|_| NS_ERROR_FAILURE)?;
-        let prk = hkdf.extract(salt, &ikm).map_err(|_| NS_ERROR_FAILURE)?;
-        let r = hkdf
-            .expand_data(&prk, &[], len)
-            .map_err(|_| NS_ERROR_FAILURE)?;
-
-        if r.len() != len {
-            Err(NS_ERROR_FAILURE)
-        } else {
-            Ok(r)
         }
     }
 }

@@ -7,6 +7,7 @@ DIRS += ["abridged_certs", "pdf_trust_anchors", "qwac_trust_anchors"]
 TEST_DIRS += ["tests"]
 
 XPIDL_SOURCES += [
+    "nsICableDiscovery.idl",
     "nsICertificateDialogs.idl",
     "nsICertOverrideService.idl",
     "nsICertStorage.idl",

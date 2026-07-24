@@ -6,10 +6,13 @@
 
 extern crate nserror;
 extern crate nss_rs;
+extern crate nsstring;
+extern crate pkcs11_bindings;
 extern crate sha2;
 #[macro_use]
 extern crate xpcom;
 
+pub mod cable_discovery;
 mod channel;
 mod cipher;
 mod cipher_state;

@@ -10,7 +10,7 @@ description = "Tests for Noise protocol"
 path = "test.rs"
 
 [dependencies]
-noise = { path = "../" }
+noise = { path = "../", features = ["test"] }
 
 [dependencies.nss-rs]
 git = "https://github.com/mozilla/nss-rs"
