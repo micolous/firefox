@@ -15,8 +15,7 @@ use nss_rs::{
     aead::{Aead, SequenceNumber, NONCE_LEN},
     Mode, SymKey,
 };
-use std::sync::{Mutex, MutexGuard};
-use thin_vec::ThinVec;
+use std::sync::Mutex;
 use xpcom::RefPtr;
 
 /// Noise post-handshake transport interface, built with a pair of `CipherState` objects (as
@@ -152,50 +151,57 @@ pub struct CtapCableChannel {
     inner: Mutex<Channel>,
 }
 
-impl CtapCableChannel {
-    fn get_self(&self) -> Result<MutexGuard<'_, Channel>> {
-        self.inner.lock().map_err(|_| NS_ERROR_FAILURE)
-    }
+/// Implement `nsICtapCableChannel` on a type that dereferences to [`Channel`][].
+macro_rules! xpcchannel_impl {
+    ($base:ty, $xpc:ty) => {
+        impl $xpc {
+            fn get_self(&self) -> crate::Result<std::sync::MutexGuard<'_, $base>> {
+                self.inner.lock().map_err(|_| NS_ERROR_FAILURE)
+            }
 
-    xpcom_method!(has_keys => GetHasKeys() -> bool);
-    fn has_keys(&self) -> Result<bool> {
-        let guard = self.get_self()?;
-        Ok(guard.has_keys())
-    }
+            xpcom_method!(has_keys => GetHasKeys() -> bool);
+            fn has_keys(&self) -> crate::Result<bool> {
+                let guard = self.get_self()?;
+                Ok(guard.has_keys())
+            }
 
-    xpcom_method!(initialize_keys => InitializeKeys(
-        aDecryptKey: *const ThinVec<u8>, aEncryptKey: *const ThinVec<u8>));
-    fn initialize_keys(&self, decrypt_key: &ThinVec<u8>, encrypt_key: &ThinVec<u8>) -> Result {
-        let decrypt_key = decrypt_key
-            .as_slice()
-            .try_into()
-            .map_err(|_| NS_ERROR_INVALID_ARG)?;
-        let encrypt_key = encrypt_key
-            .as_slice()
-            .try_into()
-            .map_err(|_| NS_ERROR_INVALID_ARG)?;
+            xpcom_method!(initialize_keys => InitializeKeys(
+                aDecryptKey: *const thin_vec::ThinVec<u8>, aEncryptKey: *const thin_vec::ThinVec<u8>));
+            fn initialize_keys(&self, decrypt_key: &thin_vec::ThinVec<u8>, encrypt_key: &thin_vec::ThinVec<u8>) -> crate::Result {
+                let decrypt_key = decrypt_key
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| NS_ERROR_INVALID_ARG)?;
+                let encrypt_key = encrypt_key
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| NS_ERROR_INVALID_ARG)?;
 
-        let mut guard = self.get_self()?;
-        guard
-            .initialize_keys_bytes(decrypt_key, encrypt_key)
-            .map_err(|_| NS_ERROR_FAILURE)?;
-        Ok(())
-    }
+                let mut guard = self.get_self()?;
+                guard
+                    .initialize_keys_bytes(decrypt_key, encrypt_key)
+                    .map_err(|_| NS_ERROR_FAILURE)?;
+                Ok(())
+            }
 
-    xpcom_method!(encrypt => Encrypt(aPlainText: *const ThinVec<u8>) -> ThinVec<u8>);
-    fn encrypt(&self, plaintext: &ThinVec<u8>) -> Result<ThinVec<u8>> {
-        let mut guard = self.get_self()?;
-        let ct = guard.encrypt(plaintext)?;
-        Ok(ThinVec::from(ct))
-    }
+            xpcom_method!(encrypt => Encrypt(aPlainText: *const thin_vec::ThinVec<u8>) -> thin_vec::ThinVec<u8>);
+            fn encrypt(&self, plaintext: &thin_vec::ThinVec<u8>) -> crate::Result<thin_vec::ThinVec<u8>> {
+                let mut guard = self.get_self()?;
+                let ct = guard.encrypt(plaintext)?;
+                Ok(thin_vec::ThinVec::from(ct))
+            }
 
-    xpcom_method!(decrypt => Decrypt(aCipherText: *const ThinVec<u8>) -> ThinVec<u8>);
-    fn decrypt(&self, ciphertext: &ThinVec<u8>) -> Result<ThinVec<u8>> {
-        let mut guard = self.get_self()?;
-        let ct = guard.decrypt(ciphertext)?;
-        Ok(ThinVec::from(ct))
-    }
+            xpcom_method!(decrypt => Decrypt(aCipherText: *const thin_vec::ThinVec<u8>) -> thin_vec::ThinVec<u8>);
+            fn decrypt(&self, ciphertext: &thin_vec::ThinVec<u8>) -> crate::Result<thin_vec::ThinVec<u8>> {
+                let mut guard = self.get_self()?;
+                let ct = guard.decrypt(ciphertext)?;
+                Ok(thin_vec::ThinVec::from(ct))
+            }
+        }
+    };
 }
+
+xpcchannel_impl!(Channel, CtapCableChannel);
 
 impl From<Channel> for RefPtr<CtapCableChannel> {
     fn from(value: Channel) -> Self {

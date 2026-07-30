@@ -5726,6 +5726,7 @@ dependencies = [
  "libc",
  "nserror",
  "nss-rs",
+ "sha2",
  "thin-vec",
  "xpcom",
 ]

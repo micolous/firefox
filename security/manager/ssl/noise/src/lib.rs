@@ -6,15 +6,26 @@
 
 extern crate nserror;
 extern crate nss_rs;
+extern crate sha2;
 #[macro_use]
 extern crate xpcom;
 
+#[macro_use]
 mod channel;
+mod ec;
+mod handshake;
+mod hash;
 mod padding;
+mod symmetric_state;
 
 use nss_rs::aead::AeadAlgorithms;
 
-pub use crate::channel::Channel;
+pub use crate::{
+    channel::Channel,
+    handshake::{Initiator, InitiatorHandshake, Responder},
+    hash::Sha256,
+    symmetric_state::SymmetricState,
+};
 
 pub type Result<T = ()> = std::result::Result<T, nserror::nsresult>;
 pub const ALG: AeadAlgorithms = AeadAlgorithms::Aes256Gcm;
