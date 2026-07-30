@@ -456,3 +456,20 @@ pub extern "C" fn Rust_NoiseBase10() {
     expect_eq!(Some(1), decoded_size(i.len()));
     expect_eq!(true, decode(i).is_err());
 }
+
+/// Test caBLE discovery flows
+#[no_mangle]
+pub extern "C" fn Rust_NoiseCableDiscovery() {
+    use discovery::*;
+
+    let shared_secret = SharedSecret::from([0; 16]);
+    let p = Params::new_with_shared_secret_for_tests(shared_secret)
+        .expect("Params::new_with_shared_secret");
+
+    let tunnel_id = p.tunnel_id();
+    let expected_tunnel_id = TunnelID::from([
+        0x3e, 0xef, 0x97, 0x09, 0x79, 0x86, 0x41, 0x3b, 0x05, 0x9e, 0xaa, 0x2a, 0x30, 0xd6, 0x53,
+        0xd4,
+    ]);
+    expect_eq!(&expected_tunnel_id, tunnel_id);
+}
