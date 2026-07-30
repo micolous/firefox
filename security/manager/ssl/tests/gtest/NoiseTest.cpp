@@ -17,3 +17,12 @@ TEST_F(psm_Noise, ChannelEncryptDecrypt) { Rust_NoiseChannelEncryptDecrypt(); }
 
 extern "C" void Rust_NoiseChannelConsistency();
 TEST_F(psm_Noise, ChannelConsistency) { Rust_NoiseChannelConsistency(); }
+
+extern "C" void Rust_NoiseHandshakeKNpsk0();
+TEST_F(psm_Noise, HandshakeKNpsk0) { Rust_NoiseHandshakeKNpsk0(); }
+
+extern "C" void Rust_NoiseHandshakeNKpsk0();
+TEST_F(psm_Noise, HandshakeNKpsk0) { Rust_NoiseHandshakeNKpsk0(); }
+
+extern "C" void Rust_NoiseHandshakeErrors();
+TEST_F(psm_Noise, HandshakeErrors) { Rust_NoiseHandshakeErrors(); }
