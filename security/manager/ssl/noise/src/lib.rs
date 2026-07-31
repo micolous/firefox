@@ -10,6 +10,7 @@ extern crate sha2;
 #[macro_use]
 extern crate xpcom;
 
+pub mod base10;
 #[macro_use]
 mod channel;
 mod ec;

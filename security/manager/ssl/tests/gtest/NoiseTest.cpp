@@ -26,3 +26,6 @@ TEST_F(psm_Noise, HandshakeNKpsk0) { Rust_NoiseHandshakeNKpsk0(); }
 
 extern "C" void Rust_NoiseHandshakeErrors();
 TEST_F(psm_Noise, HandshakeErrors) { Rust_NoiseHandshakeErrors(); }
+
+extern "C" void Rust_NoiseBase10();
+TEST_F(psm_Noise, Base10) { Rust_NoiseBase10(); }
