@@ -47,6 +47,7 @@ extern crate mapped_hyph;
 extern crate mozurl;
 extern crate mp4parse_capi;
 extern crate netwerk_helper;
+extern crate noise;
 extern crate nserror;
 extern crate nsstring;
 extern crate prefs_parser;

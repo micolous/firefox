@@ -8,6 +8,7 @@ SOURCES += [
     "DeserializeCertTest.cpp",
     "HMACTest.cpp",
     "MD4Test.cpp",
+    "NoiseTest.cpp",
     "NSSBenchTest.cpp",
     "OCSPCacheTest.cpp",
     "TLSIntoleranceTest.cpp",
