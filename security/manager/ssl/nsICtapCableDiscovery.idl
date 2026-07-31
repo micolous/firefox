@@ -1,0 +1,202 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#include "nsISupports.idl"
+
+/**
+ * Request parameters for an initiator's caBLE/Hybrid CTAP discovery session.
+ *
+ * This does not expose the initiator's public key or QR secret, as this is an
+ * internal implementation detail.
+ *
+ * This structure is intended for use by both the initiator and authenticator.
+ */
+[scriptable, uuid(01f37e38-461a-4fff-9857-ca5870160fcf)]
+interface nsICtapCableDiscoveryParams : nsISupports
+{
+    /**
+     * WebSockets transport channel type:
+     * <https://fidoalliance.org/specs/fido-v2.3-ps-20260226/fido-client-to-authenticator-protocol-v2.3-ps-20260226.html#hybrid-websocket-channel>
+     */
+    const unsigned long TRANSPORT_WEBSOCKETS = 0;
+
+    /**
+     * Bluetooth Low Energy L2CAP transport channel type:
+     * <https://fidoalliance.org/specs/fido-v2.3-ps-20260226/fido-client-to-authenticator-protocol-v2.3-ps-20260226.html#hybrid-ble-channel>
+     */
+    const unsigned long TRANSPORT_L2CAP = 1;
+
+    /**
+     * The number of well-known caBLE tunnel servers that the initiator knows
+     * about.
+     */
+    [must_use] attribute unsigned short knownDomainCount;
+
+    /**
+     * Optional request timestamp, in seconds since UNIX epoch.
+     *
+     * If set to `0`, this value will not be sent to the authenticator.
+     *
+     * Defaults to `0`.
+     */
+    attribute unsigned long long timestamp;
+
+    /**
+     * When `true`, the initiator supports state-assisted transactions.
+     *
+     * This attribute is always sent to the authenticator for compatibility
+     * reasons.
+     *
+     * Defaults to `false`.
+     */
+    attribute boolean supportsStateAssistedTransactions;
+
+    /**
+     * The CTAP or Digital Credentials API request type.
+     *
+     * This is one of the `REQUEST_TYPE_*` constants, but may be set to another
+     * value by another protocol.
+     */
+    [must_use] attribute ACString requestType;
+
+    /**
+     * Array of the initiator's supported transport channel types.
+     *
+     * If unset or empty, no supported transport channel types will be sent to
+     * the authenticator. This indicates that it only supports WebSockets.
+     */
+    attribute Array<unsigned long> supportedTransports;
+
+    /**
+     * `true` if the initiator supports WebSockets as a transport channel.
+     */
+    readonly attribute boolean supportsWebSocketTransport;
+
+    /**
+     * `true` if the initiator supports Bluetooth Low Energy L2CAP as a
+     * transport channel.
+     */
+    readonly attribute boolean supportsL2CAPTransport;
+
+    /**
+     * Tunnel ID for the session, derived from the session's shared secret.
+     *
+     * This is a 16 byte value, to be encoded as Base16 for the tunnel URL.
+     */
+    readonly attribute Array<octet> tunnelID;
+};
+
+/**
+ * Common attributes for an in-progress caBLE/Hybrid CTAP discovery session, as
+ * either the initiator or the authenticator.
+ *
+ * This does not expose the initiator's public key, QR secret, nonce, or derived
+ * EID keys, as these are an internal implementation detail.
+ */
+[scriptable, uuid(1c74a158-546d-48d2-aa23-e09f195eb9e7)]
+interface nsICtapCableDiscoverySession : nsISupports
+{
+    /**
+     * Request parameters sent by the initiator.
+     */
+    readonly attribute nsICtapCableDiscoveryParams params;
+};
+
+/**
+ * An in-progress caBLE/Hybrid CTAP discovery session, as the initiator.
+ */
+[scriptable, uuid(56831d85-ff39-44d2-816f-b258c03e7d5c)]
+interface nsICtapCableInitiatorDiscoverySession : nsICtapCableDiscoverySession
+{
+    /**
+     * `nsICtapCableDiscoveryParams`, serialized as a `FIDO:/` URL:
+     * <https://fidoalliance.org/specs/fido-v2.3-ps-20260226/fido-client-to-authenticator-protocol-v2.3-ps-20260226.html#hybrid-qr-initiated>
+     *
+     * The initiator renders this URL as a QR code to be scanned by the
+     * authenticator.
+     */
+    readonly attribute ACString url;
+
+    /**
+     * As the initiator, try to decrypt an EID BLE advertisement from the
+     * authenticator, and get the connection nonce.
+     *
+     * On success, this updates the session's connection nonce, tunnel server ID
+     * and routing ID and returns `true`. This may be called (and updated)
+     * multiple times.
+     *
+     * On failure, this returns `false`, and does not update the session's
+     * internal state.
+     */
+    boolean tryDecryptEID(
+        in Array<octet> aEncryptedEID,
+        [optional] in Array<octet> aExtendedAdvertisingSuffix
+    );
+
+    /**
+     * `true` if this discovery session contains details of a potentially-usable
+     * authenticator. This is set to `true` if `tryDecryptEID` has ever returned
+     * `true`.
+     */
+    readonly attribute boolean foundAuthenticator;
+
+    /**
+     * If the authenticator has selected the WebSockets transport, the URL that
+     * the initiator can connect to the authenticator on.
+     *
+     * Returns an empty string if no authenticator has been found, or if the
+     * authenticator has chosen a different transport.
+     */
+    readonly attribute ACString webSocketUrl;
+};
+
+/**
+ * An in-progress caBLE/Hybrid CTAP discovery session, as the authenticator.
+ */
+[scriptable, uuid(9452c811-abb3-44b6-99fa-d060462e7c21)]
+interface nsICtapCableAuthenticatorDiscoverySession : nsICtapCableDiscoverySession
+{
+    /**
+     * As the authenticator, generate an encrypted EID to be sent as a BLE
+     * advertisement.
+     *
+     * @param aTunnelServerID [in] Tunnel server ID
+     * @param aRoutingID      [in] 3 byte routing ID
+     * @param aTransport      [in] preferred transport for the connection
+     *
+     * @returns Encrypted EID to broadcast. The first 20 bytes is the BLE
+     *          advert, any additional bytes are in an extended advertisement
+     *          field.
+     */
+    Array<octet> generateEncryptedEID(
+        in unsigned short aTunnelServerID,
+        in Array<octet> aRoutingID,
+        in unsigned long aTransport
+    );
+};
+
+/**
+ * caBLE/Hybrid CTAP discovery service singleton.
+ */
+[scriptable, uuid(c7a844ec-122a-483e-b62b-b7024256b485)]
+interface nsICtapCableDiscoveryService : nsISupports
+{
+    /**
+     * Start the initiator's side of a caBLE discovery session.
+     *
+     * @param aParams [in] caBLE request parameters.
+     */
+    nsICtapCableInitiatorDiscoverySession startInitiator(
+        in nsICtapCableDiscoveryParams aParams
+    );
+
+    /**
+     * Start the authenticator's side of a caBLE discovery session.
+     *
+     * @param aUrl [in] `FIDO:/` URL from the initiator's QR code.
+     */
+    nsICtapCableAuthenticatorDiscoverySession startAuthenticator(
+        in ACString aUrl
+    );
+};

@@ -5642,6 +5642,8 @@ dependencies = [
  "mozbuild",
  "nserror",
  "nss-rs",
+ "nsstring",
+ "pkcs11-bindings",
  "sha2",
  "thin-vec",
  "thiserror 2.0.12",
