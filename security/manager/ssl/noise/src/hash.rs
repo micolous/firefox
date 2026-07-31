@@ -6,11 +6,17 @@
 //!
 //! <https://noiseprotocol.org/noise.html#hash-functions>
 
+use std::ffi::c_uint;
+
 use crate::{handshake::HandshakeType, Result};
-use nserror::NS_ERROR_FAILURE;
-use nss_rs::hkdf::{Hkdf, HkdfAlgorithm};
-use sha2::Digest;
+use nserror::{NS_ERROR_FAILURE, NS_ERROR_INVALID_ARG};
+use nss_rs::{
+    hkdf::{Hkdf, HkdfAlgorithm},
+    p11, IntoResult as _, SECItemBorrowed, SymKey,
+};
+use pkcs11_bindings::CKA_SIGN;
 pub use sha2::Sha256;
+use sha2::{digest, Digest};
 
 /// [Noise Hash trait][0].
 ///
@@ -24,6 +30,9 @@ pub use sha2::Sha256;
 pub trait Hash: Digest {
     /// NSS HKDF algorithm for the hash.
     const HKDF_ALGORITHM: HkdfAlgorithm;
+
+    /// NSS HMAC algorithm for the hash.
+    const HMAC_ALGORITHM: p11::CK_MECHANISM_TYPE;
 
     /// A constant specifying the size in bytes of the hash output. Must be either 32 or 64 bytes.
     fn hash_len() -> usize {
@@ -61,10 +70,47 @@ pub trait Hash: Digest {
             Ok(r)
         }
     }
+
+    fn hmac(key: &SymKey, data: &[u8]) -> Result<digest::Output<Self>> {
+        // TODO: upstream this as nss_rs::hmac imports the key each time
+        let data_len = c_uint::try_from(data.len()).map_err(|_| NS_ERROR_INVALID_ARG)?;
+
+        let param = SECItemBorrowed::make_empty();
+        let context = unsafe {
+            p11::PK11_CreateContextBySymKey(Self::HMAC_ALGORITHM, CKA_SIGN, **key, param.as_ref())
+        }
+        .into_result()
+        .map_err(|_| NS_ERROR_FAILURE)?;
+
+        unsafe { p11::PK11_DigestOp(*context, data.as_ptr(), data_len) }
+            .into_result()
+            .map_err(|_| NS_ERROR_FAILURE)?;
+
+        let mut digest: digest::Output<Self> = Default::default();
+        let mut digest_len = 0;
+
+        unsafe {
+            p11::PK11_DigestFinal(
+                *context,
+                digest.as_mut_ptr(),
+                &raw mut digest_len,
+                digest.len() as u32,
+            )
+        }
+        .into_result()
+        .map_err(|_| NS_ERROR_FAILURE)?;
+
+        if digest_len as usize != digest.len() {
+            return Err(NS_ERROR_FAILURE);
+        }
+
+        Ok(digest)
+    }
 }
 
 impl Hash for Sha256 {
     const HKDF_ALGORITHM: HkdfAlgorithm = HkdfAlgorithm::HKDF_SHA2_256;
+    const HMAC_ALGORITHM: p11::CK_MECHANISM_TYPE = p11::CKM_SHA256_HMAC as p11::CK_MECHANISM_TYPE;
 
     fn protocol_name(ht: HandshakeType) -> &'static [u8] {
         match ht {

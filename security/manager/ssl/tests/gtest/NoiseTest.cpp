@@ -29,3 +29,6 @@ TEST_F(psm_Noise, HandshakeErrors) { Rust_NoiseHandshakeErrors(); }
 
 extern "C" void Rust_NoiseBase10();
 TEST_F(psm_Noise, Base10) { Rust_NoiseBase10(); }
+
+extern "C" void Rust_NoiseCableDiscovery();
+TEST_F(psm_Noise, CableDiscovery) { Rust_NoiseCableDiscovery(); }

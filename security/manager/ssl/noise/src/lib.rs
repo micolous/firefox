@@ -6,6 +6,8 @@
 
 extern crate nserror;
 extern crate nss_rs;
+extern crate nsstring;
+extern crate pkcs11_bindings;
 extern crate sha2;
 #[macro_use]
 extern crate xpcom;
@@ -13,6 +15,7 @@ extern crate xpcom;
 pub mod base10;
 #[macro_use]
 mod channel;
+pub mod discovery;
 mod ec;
 mod handshake;
 mod hash;
