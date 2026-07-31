@@ -37,6 +37,9 @@ TEST_F(psm_Noise, HandshakeNKpsk0NoInitiatorIdentity) {
 extern "C" void Rust_NoiseHandshakeErrors();
 TEST_F(psm_Noise, HandshakeErrors) { Rust_NoiseHandshakeErrors(); }
 
+extern "C" void Rust_NoiseBase10();
+TEST_F(psm_Noise, Base10) { Rust_NoiseBase10(); }
+
 /**
  * Test a Noise handshake over the XPCOM boundary.
  *
