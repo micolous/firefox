@@ -7,20 +7,22 @@
 use crate::{
     ec::{sec1_ec2_key_to_der, P256_X962_LENGTH},
     handshake::{HandshakeType, TAG_LEN},
-    Channel, Result, SymmetricState,
+    Channel, Error, Result, SymmetricState,
 };
-use nserror::{nsresult, NS_ERROR_FAILURE, NS_ERROR_INVALID_ARG, NS_OK};
+#[cfg(feature = "xpcom")]
+use nserror::{nsresult, NS_OK};
 use nss_rs::{
     aead::Mode,
     ec::{ecdh, ecdh_keygen, import_ec_public_key_from_spki, EcCurve, EcdhKeypair},
     PublicKey,
 };
 use sha2::{digest, Sha256};
-use std::{
-    ops::{Deref, DerefMut},
-    sync::Mutex,
-};
+use std::ops::{Deref, DerefMut};
+#[cfg(feature = "xpcom")]
+use std::sync::Mutex;
+#[cfg(feature = "xpcom")]
 use thin_vec::ThinVec;
+#[cfg(feature = "xpcom")]
 use xpcom::RefPtr;
 
 /// Noise handshake responder
@@ -61,7 +63,7 @@ impl Responder {
         message: &[u8],
     ) -> Result<Self> {
         let peer_der = sec1_ec2_key_to_der(peer_identity)?;
-        let peer_key = import_ec_public_key_from_spki(&peer_der).map_err(|_| NS_ERROR_FAILURE)?;
+        let peer_key = import_ec_public_key_from_spki(&peer_der)?;
 
         let mut ss = SymmetricState::initialize_symmetric(HandshakeType::KNpsk0);
         ss.mix_hash(&[1]);
@@ -88,12 +90,7 @@ impl Responder {
     ) -> Result<Self> {
         let mut ss = SymmetricState::initialize_symmetric(HandshakeType::NKpsk0);
         ss.mix_hash(&[0]);
-        ss.mix_hash(
-            &local_identity
-                .public
-                .key_data()
-                .map_err(|_| NS_ERROR_FAILURE)?,
-        );
+        ss.mix_hash(&local_identity.public.key_data()?);
 
         Self::new(ss, psk, Some(local_identity), None, message)
     }
@@ -106,59 +103,56 @@ impl Responder {
         message: &[u8],
     ) -> Result<Self> {
         if local_identity.is_some() == peer_identity.is_some() {
-            return Err(NS_ERROR_INVALID_ARG);
+            return Err(Error::InvalidArgument);
         }
         let Some((peer_point_bytes, ct)) = message.split_at_checked(P256_X962_LENGTH) else {
-            return Err(NS_ERROR_INVALID_ARG);
+            return Err(Error::InvalidArgument);
         };
         if ct.len() != TAG_LEN {
-            return Err(NS_ERROR_INVALID_ARG);
+            return Err(Error::InvalidArgument);
         }
 
-        let peer_key_der =
-            sec1_ec2_key_to_der(peer_point_bytes.try_into().map_err(|_| NS_ERROR_FAILURE)?)?;
-        let peer_key =
-            import_ec_public_key_from_spki(&peer_key_der).map_err(|_| NS_ERROR_FAILURE)?;
+        let peer_key_der = sec1_ec2_key_to_der(
+            peer_point_bytes
+                .try_into()
+                .map_err(|_| Error::InvalidArgument)?,
+        )?;
+        let peer_key = import_ec_public_key_from_spki(&peer_key_der)?;
 
         ss.mix_key_and_hash(psk, Mode::Decrypt)?;
         ss.mix_hash(peer_point_bytes);
         ss.mix_key(peer_point_bytes, Mode::Decrypt)?;
 
         if let Some(local_identity) = local_identity {
-            let es_key = ecdh(&local_identity.private, &peer_key).map_err(|_| NS_ERROR_FAILURE)?;
+            let es_key = ecdh(&local_identity.private, &peer_key)?;
             ss.mix_key(&es_key, Mode::Decrypt)?;
         }
 
         let pt = ss.decrypt_and_hash(ct)?;
         if !pt.is_empty() {
-            return Err(NS_ERROR_INVALID_ARG);
+            return Err(Error::InvalidArgument);
         }
 
-        let ephemeral_key = ecdh_keygen(&EcCurve::P256).map_err(|_| NS_ERROR_FAILURE)?;
-        let ephemeral_key_bytes = ephemeral_key
-            .public
-            .key_data()
-            .map_err(|_| NS_ERROR_FAILURE)?;
+        let ephemeral_key = ecdh_keygen(&EcCurve::P256)?;
+        let ephemeral_key_bytes = ephemeral_key.public.key_data()?;
         if ephemeral_key_bytes.len() != P256_X962_LENGTH {
-            return Err(NS_ERROR_FAILURE);
+            return Err(Error::Internal);
         }
 
         ss.mix_hash(&ephemeral_key_bytes);
         ss.mix_key(&ephemeral_key_bytes, Mode::Encrypt)?;
 
-        let shared_key_ee =
-            ecdh(&ephemeral_key.private, &peer_key).map_err(|_| NS_ERROR_FAILURE)?;
+        let shared_key_ee = ecdh(&ephemeral_key.private, &peer_key)?;
         ss.mix_key(&shared_key_ee, Mode::Encrypt)?;
 
         if let Some(peer_identity) = peer_identity {
-            let shared_key_se =
-                ecdh(&ephemeral_key.private, peer_identity).map_err(|_| NS_ERROR_FAILURE)?;
+            let shared_key_se = ecdh(&ephemeral_key.private, peer_identity)?;
             ss.mix_key(&shared_key_se, Mode::Encrypt)?;
         }
 
         let ct = ss.encrypt_and_hash(&[])?;
         if ct.len() != TAG_LEN {
-            return Err(NS_ERROR_FAILURE);
+            return Err(Error::Internal);
         }
 
         let mut response_message = [0; Self::RESPONSE_LENGTH];
@@ -187,12 +181,14 @@ impl DerefMut for Responder {
     }
 }
 
+#[cfg(feature = "xpcom")]
 /// `nsICtapCableResponder`-compatible XPCOM wrapper for [`Responder`][].
 #[xpcom(implement(nsICtapCableResponder), atomic)]
 pub struct CtapCableResponder {
     inner: Mutex<Responder>,
 }
 
+#[cfg(feature = "xpcom")]
 impl From<Responder> for RefPtr<CtapCableResponder> {
     fn from(value: Responder) -> Self {
         CtapCableResponder::allocate(InitCtapCableResponder {
@@ -201,8 +197,10 @@ impl From<Responder> for RefPtr<CtapCableResponder> {
     }
 }
 
+#[cfg(feature = "xpcom")]
 xpcchannel_impl!(Responder, CtapCableResponder);
 
+#[cfg(feature = "xpcom")]
 impl CtapCableResponder {
     xpcom_method!(get_handshake_hash => GetHandshakeHash() -> ThinVec<u8>);
     fn get_handshake_hash(&self) -> Result<ThinVec<u8>> {

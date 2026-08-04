@@ -6,8 +6,7 @@
 //!
 //! <https://noiseprotocol.org/noise.html#hash-functions>
 
-use crate::{handshake::HandshakeType, Result};
-use nserror::NS_ERROR_FAILURE;
+use crate::{handshake::HandshakeType, Error, Result};
 use nss_rs::hkdf::{Hkdf, HkdfAlgorithm};
 use sha2::Digest;
 pub use sha2::Sha256;
@@ -49,14 +48,12 @@ pub trait Hash: Digest {
     /// Returns a buffer of `len` bytes.
     fn hkdf_bytes(salt: &[u8], ikm: &[u8], info: &[u8], len: usize) -> Result<Vec<u8>> {
         let hkdf = Hkdf::new(Self::HKDF_ALGORITHM);
-        let ikm = hkdf.import_secret(ikm).map_err(|_| NS_ERROR_FAILURE)?;
-        let prk = hkdf.extract(salt, &ikm).map_err(|_| NS_ERROR_FAILURE)?;
-        let r = hkdf
-            .expand_data(&prk, info, len)
-            .map_err(|_| NS_ERROR_FAILURE)?;
+        let ikm = hkdf.import_secret(ikm)?;
+        let prk = hkdf.extract(salt, &ikm)?;
+        let r = hkdf.expand_data(&prk, info, len)?;
 
         if r.len() != len {
-            Err(NS_ERROR_FAILURE)
+            Err(Error::Internal)
         } else {
             Ok(r)
         }

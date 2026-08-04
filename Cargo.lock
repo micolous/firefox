@@ -2907,7 +2907,6 @@ dependencies = [
  "mozglue-static",
  "mozilla-central-workspace-hack",
  "mp4parse-gtest",
- "noise-gtest",
  "nsstring-gtest",
  "swgl",
  "xpcom-gtest",
@@ -5640,19 +5639,13 @@ name = "noise"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "mozbuild",
  "nserror",
  "nss-rs",
  "sha2",
  "thin-vec",
+ "thiserror 2.0.12",
  "xpcom",
-]
-
-[[package]]
-name = "noise-gtest"
-version = "0.1.0"
-dependencies = [
- "noise",
- "nss-rs",
 ]
 
 [[package]]
