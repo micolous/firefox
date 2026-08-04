@@ -6,8 +6,7 @@
 //!
 //! <https://fidoalliance.org/specs/fido-v2.3-ps-20260226/fido-client-to-authenticator-protocol-v2.3-ps-20260226.html#~:text=func-,digitEncode>
 
-use crate::Result;
-use nserror::{NS_ERROR_FAILURE, NS_ERROR_INVALID_ARG};
+use crate::{Error, Result};
 
 /// Chunk size for input/decoded data
 const CHUNK_SIZE: usize = 7;
@@ -89,10 +88,10 @@ pub fn decode(i: &[u8]) -> Result<Vec<u8>> {
         return Ok(vec![]);
     }
 
-    let s = decoded_size(i.len()).ok_or(NS_ERROR_INVALID_ARG)?;
+    let s = decoded_size(i.len()).ok_or(Error::InvalidArgument)?;
 
     if i.iter().any(|&c| !c.is_ascii_digit()) {
-        return Err(NS_ERROR_INVALID_ARG);
+        return Err(Error::InvalidArgument);
     }
 
     let mut o = Vec::with_capacity(s);
@@ -100,22 +99,22 @@ pub fn decode(i: &[u8]) -> Result<Vec<u8>> {
     for c in chunks {
         // TODO: replace with u64::from_ascii_bytes when stable
         // https://github.com/rust-lang/rust/issues/134821
-        let c = str::from_utf8(c).map_err(|_| NS_ERROR_FAILURE)?;
-        let v = c.parse::<u64>().map_err(|_| NS_ERROR_FAILURE)?;
+        let c = str::from_utf8(c).map_err(|_| Error::Internal)?;
+        let v = c.parse::<u64>().map_err(|_| Error::Internal)?;
         if v >> (CHUNK_SIZE * 8) != 0 {
             // Decimal value is too high.
-            return Err(NS_ERROR_INVALID_ARG);
+            return Err(Error::InvalidArgument);
         }
         o.extend_from_slice(&v.to_le_bytes()[..CHUNK_SIZE]);
     }
 
     if !remainder.is_empty() {
-        let s = decoded_size(remainder.len()).ok_or(NS_ERROR_FAILURE)?;
-        let c = str::from_utf8(remainder).map_err(|_| NS_ERROR_FAILURE)?;
-        let v = c.parse::<u64>().map_err(|_| NS_ERROR_FAILURE)?;
+        let s = decoded_size(remainder.len()).ok_or(Error::Internal)?;
+        let c = str::from_utf8(remainder).map_err(|_| Error::Internal)?;
+        let v = c.parse::<u64>().map_err(|_| Error::Internal)?;
         if v >> (s * 8) != 0 {
             // Decimal value is too high.
-            return Err(NS_ERROR_INVALID_ARG);
+            return Err(Error::InvalidArgument);
         }
 
         o.extend_from_slice(&v.to_le_bytes()[..s]);

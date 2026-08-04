@@ -12,6 +12,5 @@ extern crate kvstore_gtest;
 extern crate l10nregistry_ffi_gtest;
 extern crate moz_task_gtest;
 extern crate mp4parse_gtest;
-extern crate noise_gtest;
 extern crate nsstring_gtest;
 extern crate xpcom_gtest;

@@ -4,8 +4,7 @@
 
 //! Padding functions.
 
-use crate::Result;
-use nserror::NS_ERROR_FAILURE;
+use crate::{Error, Result};
 
 const PADDING_MUL: usize = 32;
 
@@ -42,14 +41,14 @@ pub fn pad_into_vec(src: &[u8]) -> Vec<u8> {
 
 /// Unpad a [padded][pad] `buf`.
 ///
-/// Returns [`NS_ERROR_FAILURE`] if `buf` is empty, the final byte is greater than [PADDING_MUL],
-/// or the final byte is greater than the length of `buf`.
+/// Returns [`Error::InvalidArgument`] if `buf` is empty, the final byte is greater than
+/// [PADDING_MUL], or the final byte is greater than the length of `buf`.
 pub fn unpad(buf: &mut Vec<u8>) -> Result {
     let padded_len = buf.len();
-    let padding_len = buf.last().copied().ok_or(NS_ERROR_FAILURE)? as usize + 1;
+    let padding_len = buf.last().copied().ok_or(Error::InvalidArgument)? as usize + 1;
     if padding_len > padded_len || padding_len > PADDING_MUL {
         // Incorrect padding length
-        return Err(NS_ERROR_FAILURE);
+        return Err(Error::InvalidArgument);
     }
 
     buf.truncate(padded_len - padding_len);

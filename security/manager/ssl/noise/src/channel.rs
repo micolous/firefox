@@ -6,16 +6,17 @@
 
 use crate::{
     padding::{pad_into_vec, unpad},
-    Result, ALG,
+    Error, Result, ALG,
 };
-use nserror::{
-    nsresult, NS_ERROR_DOM_INVALID_STATE_ERR, NS_ERROR_FAILURE, NS_ERROR_INVALID_ARG, NS_OK,
-};
+#[cfg(feature = "xpcom")]
+use nserror::{nsresult, NS_OK};
 use nss_rs::{
     aead::{Aead, SequenceNumber, NONCE_LEN},
     Mode, SymKey,
 };
+#[cfg(feature = "xpcom")]
 use std::sync::Mutex;
+#[cfg(feature = "xpcom")]
 use xpcom::RefPtr;
 
 /// Noise post-handshake transport interface, built with a pair of `CipherState` objects (as
@@ -66,9 +67,9 @@ impl Channel {
     /// (`Aead::import_key(AeadAlgorithms::Aes256Gcm, key)`).
     pub fn initialize_keys(&mut self, decrypt_key: &SymKey, encrypt_key: &SymKey) -> Result {
         let decrypter = Aead::new(Mode::Decrypt, ALG, decrypt_key, [0; NONCE_LEN])
-            .map_err(|_| NS_ERROR_INVALID_ARG)?;
+            .map_err(|_| Error::InvalidArgument)?;
         let encrypter = Aead::new(Mode::Encrypt, ALG, encrypt_key, [0; NONCE_LEN])
-            .map_err(|_| NS_ERROR_INVALID_ARG)?;
+            .map_err(|_| Error::InvalidArgument)?;
 
         self.decrypter = Some(decrypter);
         self.encrypter = Some(encrypter);
@@ -83,8 +84,8 @@ impl Channel {
         decrypt_key: &[u8; 32],
         encrypt_key: &[u8; 32],
     ) -> Result {
-        let decrypt_key = Aead::import_key(ALG, decrypt_key).map_err(|_| NS_ERROR_INVALID_ARG)?;
-        let encrypt_key = Aead::import_key(ALG, encrypt_key).map_err(|_| NS_ERROR_INVALID_ARG)?;
+        let decrypt_key = Aead::import_key(ALG, decrypt_key).map_err(|_| Error::InvalidArgument)?;
+        let encrypt_key = Aead::import_key(ALG, encrypt_key).map_err(|_| Error::InvalidArgument)?;
         self.initialize_keys(&decrypt_key, &encrypt_key)
     }
 
@@ -101,11 +102,11 @@ impl Channel {
     pub fn encrypt(&mut self, plaintext: &[u8]) -> Result<Vec<u8>> {
         let Some(encrypter) = &mut self.encrypter else {
             // The spec says to return plaintext, but this is dangerous.
-            return Err(NS_ERROR_DOM_INVALID_STATE_ERR);
+            return Err(Error::InvalidState);
         };
 
         let pt = pad_into_vec(plaintext);
-        encrypter.encrypt(&[], &pt).map_err(|_| NS_ERROR_FAILURE)
+        encrypter.encrypt(&[], &pt).map_err(|_| Error::Internal)
     }
 
     /// Decrypt `ciphertext` using this channel's reader key and nonce, and then increment the
@@ -115,17 +116,17 @@ impl Channel {
     pub fn decrypt(&mut self, ciphertext: &[u8]) -> Result<Vec<u8>> {
         if self.decrypt_nonce == SequenceNumber::MAX {
             // Cannot increment nonce anymore.
-            return Err(NS_ERROR_DOM_INVALID_STATE_ERR);
+            return Err(Error::InvalidState);
         }
 
         let Some(decrypter) = &mut self.decrypter else {
             // The spec says to return ciphertext, but this is dangerous.
-            return Err(NS_ERROR_DOM_INVALID_STATE_ERR);
+            return Err(Error::InvalidState);
         };
 
         let mut pt = decrypter
             .decrypt(&[], self.decrypt_nonce, ciphertext)
-            .map_err(|_| NS_ERROR_FAILURE)?;
+            .map_err(|_| Error::InvalidArgument)?;
         unpad(&mut pt)?;
         self.decrypt_nonce += 1;
 
@@ -145,18 +146,20 @@ impl Channel {
     }
 }
 
+#[cfg(feature = "xpcom")]
 /// `nsICtapCableChannel`-compatible XPCOM wrapper for [`Channel`][].
 #[xpcom(implement(nsICtapCableChannel), atomic)]
 pub struct CtapCableChannel {
     inner: Mutex<Channel>,
 }
 
+#[cfg(feature = "xpcom")]
 /// Implement `nsICtapCableChannel` on a type that dereferences to [`Channel`][].
 macro_rules! xpcchannel_impl {
     ($base:ty, $xpc:ty) => {
         impl $xpc {
             fn get_self(&self) -> crate::Result<std::sync::MutexGuard<'_, $base>> {
-                self.inner.lock().map_err(|_| NS_ERROR_FAILURE)
+                self.inner.lock().map_err(|_| crate::Error::Internal)
             }
 
             xpcom_method!(has_keys => GetHasKeys() -> bool);
@@ -171,16 +174,14 @@ macro_rules! xpcchannel_impl {
                 let decrypt_key = decrypt_key
                     .as_slice()
                     .try_into()
-                    .map_err(|_| NS_ERROR_INVALID_ARG)?;
+                    .map_err(|_| crate::Error::InvalidArgument)?;
                 let encrypt_key = encrypt_key
                     .as_slice()
                     .try_into()
-                    .map_err(|_| NS_ERROR_INVALID_ARG)?;
+                    .map_err(|_| crate::Error::InvalidArgument)?;
 
                 let mut guard = self.get_self()?;
-                guard
-                    .initialize_keys_bytes(decrypt_key, encrypt_key)
-                    .map_err(|_| NS_ERROR_FAILURE)?;
+                guard.initialize_keys_bytes(decrypt_key, encrypt_key)?;
                 Ok(())
             }
 
@@ -201,8 +202,10 @@ macro_rules! xpcchannel_impl {
     };
 }
 
+#[cfg(feature = "xpcom")]
 xpcchannel_impl!(Channel, CtapCableChannel);
 
+#[cfg(feature = "xpcom")]
 impl From<Channel> for RefPtr<CtapCableChannel> {
     fn from(value: Channel) -> Self {
         CtapCableChannel::allocate(InitCtapCableChannel {
@@ -211,6 +214,7 @@ impl From<Channel> for RefPtr<CtapCableChannel> {
     }
 }
 
+#[cfg(feature = "xpcom")]
 /// Create a new `nsICtapCableChannel`-compatible [`Channel`][], with no set keys.
 #[no_mangle]
 pub unsafe extern "C" fn ctap_cable_channel_constructor(
@@ -218,7 +222,7 @@ pub unsafe extern "C" fn ctap_cable_channel_constructor(
     result: *mut *mut xpcom::reexports::libc::c_void,
 ) -> nserror::nsresult {
     if nss_rs::init().is_err() {
-        return NS_ERROR_FAILURE;
+        return nserror::NS_ERROR_FAILURE;
     }
 
     let channel: RefPtr<CtapCableChannel> = Channel::default().into();
