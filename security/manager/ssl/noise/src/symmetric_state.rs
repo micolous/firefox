@@ -2,8 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use crate::{handshake::HandshakeType, hash::Hash, Channel, Result, ALG};
-use nserror::{NS_ERROR_DOM_INVALID_STATE_ERR, NS_ERROR_FAILURE};
+use crate::{handshake::HandshakeType, hash::Hash, Channel, Error, Result, ALG};
 use nss_rs::{
     aead::{Aead, SequenceNumber},
     Mode,
@@ -55,8 +54,8 @@ impl SymmetricState {
     ///
     /// This takes an additional `mode` parameter, which sets the usage of the [`Aead`] key.
     fn initialize_key(&mut self, key: &[u8; 32], mode: Mode) -> Result {
-        let key = Aead::import_key(ALG, key).map_err(|_| NS_ERROR_FAILURE)?;
-        self.k = Some(Aead::new(mode, ALG, &key, [0; 12]).map_err(|_| NS_ERROR_FAILURE)?);
+        let key = Aead::import_key(ALG, key)?;
+        self.k = Some(Aead::new(mode, ALG, &key, [0; 12])?);
         self.n = 0;
         Ok(())
     }
@@ -69,10 +68,7 @@ impl SymmetricState {
     pub fn mix_key(&mut self, ikm: &[u8], mode: Mode) -> Result {
         let temp = Sha256::hkdf(&self.ck, ikm, 2)?;
         let (ck, temp_k) = temp.split_at(Sha256::hash_len());
-        self.initialize_key(
-            &temp_k[..32].try_into().map_err(|_| NS_ERROR_FAILURE)?,
-            mode,
-        )?;
+        self.initialize_key(&temp_k[..32].try_into().map_err(|_| Error::Internal)?, mode)?;
         self.ck.copy_from_slice(ck);
         Ok(())
     }
@@ -98,10 +94,7 @@ impl SymmetricState {
         let temp = Sha256::hkdf(&self.ck, ikm, 3)?;
         let (ck, temp) = temp.split_at(Sha256::hash_len());
         let (temp_h, temp_k) = temp.split_at(Sha256::hash_len());
-        self.initialize_key(
-            &temp_k[..32].try_into().map_err(|_| NS_ERROR_FAILURE)?,
-            mode,
-        )?;
+        self.initialize_key(&temp_k[..32].try_into().map_err(|_| Error::Internal)?, mode)?;
         self.ck.copy_from_slice(ck);
         self.mix_hash(temp_h);
         Ok(())
@@ -134,16 +127,14 @@ impl SymmetricState {
     /// [`mix_key_and_hash()`]: Self::mix_key_and_hash
     pub fn encrypt_and_hash(&mut self, pt: &[u8]) -> Result<Vec<u8>> {
         if self.n == SequenceNumber::MAX {
-            return Err(NS_ERROR_DOM_INVALID_STATE_ERR);
+            return Err(Error::InvalidState);
         }
 
         let Some(cs) = &mut self.k else {
-            return Err(NS_ERROR_DOM_INVALID_STATE_ERR);
+            return Err(Error::InvalidState);
         };
 
-        let ct = cs
-            .encrypt_with_seq(&self.h, self.n, pt)
-            .map_err(|_| NS_ERROR_FAILURE)?;
+        let ct = cs.encrypt_with_seq(&self.h, self.n, pt)?;
         self.n += 1;
         self.mix_hash(&ct);
         Ok(ct)
@@ -162,16 +153,14 @@ impl SymmetricState {
     /// <https://github.com/mozilla/nss-rs/issues/128>
     pub fn decrypt_and_hash(&mut self, ct: &[u8]) -> Result<Vec<u8>> {
         if self.n == SequenceNumber::MAX {
-            return Err(NS_ERROR_DOM_INVALID_STATE_ERR);
+            return Err(Error::InvalidState);
         }
 
         let Some(cs) = &mut self.k else {
-            return Err(NS_ERROR_DOM_INVALID_STATE_ERR);
+            return Err(Error::InvalidState);
         };
 
-        let pt = cs
-            .decrypt(&self.h, self.n, ct)
-            .map_err(|_| NS_ERROR_FAILURE)?;
+        let pt = cs.decrypt(&self.h, self.n, ct)?;
         self.n += 1;
         self.mix_hash(ct);
         Ok(pt)
@@ -192,8 +181,8 @@ impl SymmetricState {
     pub fn split(&self, initiator: bool) -> Result<Channel> {
         let temp = Sha256::hkdf(&self.ck, &[], 2)?;
         let (temp_k1, temp_k2) = temp.split_at(Sha256::hash_len());
-        let temp_k1 = temp_k1[..32].try_into().map_err(|_| NS_ERROR_FAILURE)?;
-        let temp_k2 = temp_k2[..32].try_into().map_err(|_| NS_ERROR_FAILURE)?;
+        let temp_k1 = temp_k1[..32].try_into().map_err(|_| Error::Internal)?;
+        let temp_k2 = temp_k2[..32].try_into().map_err(|_| Error::Internal)?;
 
         if initiator {
             Channel::new_with_key_bytes(temp_k2, temp_k1)

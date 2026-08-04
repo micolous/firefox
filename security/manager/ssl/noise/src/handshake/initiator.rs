@@ -7,22 +7,22 @@
 use crate::{
     ec::{sec1_ec2_key_to_der, P256_X962_LENGTH},
     handshake::{HandshakeType, TAG_LEN},
-    Channel, Result, SymmetricState,
+    Channel, Error, Result, SymmetricState,
 };
-use nserror::{
-    nsresult, NS_ERROR_DOM_INVALID_STATE_ERR, NS_ERROR_FAILURE, NS_ERROR_INVALID_ARG, NS_OK,
-};
+#[cfg(feature = "xpcom")]
+use nserror::{nsresult, NS_OK};
 use nss_rs::{
     aead::Mode,
     ec::{ecdh, ecdh_keygen, import_ec_public_key_from_spki, EcCurve, EcdhKeypair},
     PublicKey,
 };
 use sha2::{digest, Sha256};
-use std::{
-    ops::{Deref, DerefMut},
-    sync::{Mutex, MutexGuard},
-};
+use std::ops::{Deref, DerefMut};
+#[cfg(feature = "xpcom")]
+use std::sync::{Mutex, MutexGuard};
+#[cfg(feature = "xpcom")]
 use thin_vec::ThinVec;
+#[cfg(feature = "xpcom")]
 use xpcom::{interfaces::nsICtapCableInitiator, RefPtr};
 
 /// Noise initiator channel, after the handshake has completed.
@@ -66,16 +66,13 @@ impl InitiatorHandshake {
     ///
     /// [0]: https://fidoalliance.org/specs/fido-v2.3-ps-20260226/fido-client-to-authenticator-protocol-v2.3-ps-20260226.html#hybrid-qr-initiated
     pub fn new_qr_initiated(psk: &[u8; 32], local_identity: EcdhKeypair) -> Result<Self> {
-        let local_pub = local_identity
-            .public
-            .key_data()
-            .map_err(|_| NS_ERROR_FAILURE)?;
+        let local_pub = local_identity.public.key_data()?;
 
         if local_pub.len() != P256_X962_LENGTH
             || local_pub.as_slice().first().is_none_or(|&b| b != 4)
         {
             // Doesn't look like a raw P256 public key!
-            return Err(NS_ERROR_INVALID_ARG);
+            return Err(Error::InvalidArgument);
         }
 
         let mut ss = SymmetricState::initialize_symmetric(HandshakeType::KNpsk0);
@@ -98,7 +95,7 @@ impl InitiatorHandshake {
         peer_identity: &[u8; P256_X962_LENGTH],
     ) -> Result<Self> {
         let peer_der = sec1_ec2_key_to_der(peer_identity)?;
-        let peer_key = import_ec_public_key_from_spki(&peer_der).map_err(|_| NS_ERROR_FAILURE)?;
+        let peer_key = import_ec_public_key_from_spki(&peer_der)?;
 
         let mut ss = SymmetricState::initialize_symmetric(HandshakeType::NKpsk0);
         ss.mix_hash(&[0]);
@@ -114,31 +111,27 @@ impl InitiatorHandshake {
         peer_identity: Option<&PublicKey>,
     ) -> Result<Self> {
         if local_identity.is_some() == peer_identity.is_some() {
-            return Err(NS_ERROR_INVALID_ARG);
+            return Err(Error::InvalidArgument);
         }
         ss.mix_key_and_hash(psk, Mode::Encrypt)?;
 
-        let ephemeral_key = ecdh_keygen(&EcCurve::P256).map_err(|_| NS_ERROR_FAILURE)?;
+        let ephemeral_key = ecdh_keygen(&EcCurve::P256)?;
         let ephemeral_key_bytes: [u8; P256_X962_LENGTH] = ephemeral_key
             .public
-            .key_data()
-            .map_err(|_| NS_ERROR_FAILURE)?
+            .key_data()?
             .try_into()
-            .map_err(|_| NS_ERROR_FAILURE)?;
+            .map_err(|_| Error::Internal)?;
 
         ss.mix_hash(&ephemeral_key_bytes);
         ss.mix_key(&ephemeral_key_bytes, Mode::Encrypt)?;
 
         if let Some(peer_identity) = peer_identity {
-            ss.mix_key(
-                &ecdh(&ephemeral_key.private, peer_identity).map_err(|_| NS_ERROR_FAILURE)?,
-                Mode::Encrypt,
-            )?;
+            ss.mix_key(&ecdh(&ephemeral_key.private, peer_identity)?, Mode::Encrypt)?;
         }
 
         let ct = ss.encrypt_and_hash(&[])?;
         if ct.len() != TAG_LEN {
-            return Err(NS_ERROR_FAILURE);
+            return Err(Error::Internal);
         }
 
         let mut initial_message = [0; Self::INITIAL_MESSAGE_LENGTH];
@@ -166,34 +159,31 @@ impl InitiatorHandshake {
     pub fn process_handshake_response(mut self, peer_response_message: &[u8]) -> Result<Initiator> {
         let Some((peer_point_bytes, ct)) = peer_response_message.split_at_checked(P256_X962_LENGTH)
         else {
-            return Err(NS_ERROR_INVALID_ARG);
+            return Err(Error::InvalidArgument);
         };
         if ct.len() != TAG_LEN {
-            return Err(NS_ERROR_FAILURE);
+            return Err(Error::InvalidArgument);
         }
 
         let peer_key_der =
-            sec1_ec2_key_to_der(peer_point_bytes.try_into().map_err(|_| NS_ERROR_FAILURE)?)?;
-        let peer_key =
-            import_ec_public_key_from_spki(&peer_key_der).map_err(|_| NS_ERROR_FAILURE)?;
+            sec1_ec2_key_to_der(peer_point_bytes.try_into().map_err(|_| Error::Internal)?)?;
+        let peer_key = import_ec_public_key_from_spki(&peer_key_der)?;
 
         self.ss.mix_hash(peer_point_bytes);
         self.ss.mix_key(peer_point_bytes, Mode::Decrypt)?;
         self.ss.mix_key(
-            &ecdh(&self.ephemeral_key.private, &peer_key).map_err(|_| NS_ERROR_FAILURE)?,
+            &ecdh(&self.ephemeral_key.private, &peer_key)?,
             Mode::Decrypt,
         )?;
 
         if let Some(local_identity) = &self.local_identity {
-            self.ss.mix_key(
-                &ecdh(&local_identity.private, &peer_key).map_err(|_| NS_ERROR_FAILURE)?,
-                Mode::Decrypt,
-            )?;
+            self.ss
+                .mix_key(&ecdh(&local_identity.private, &peer_key)?, Mode::Decrypt)?;
         }
 
         let pt = self.ss.decrypt_and_hash(ct)?;
         if !pt.is_empty() {
-            return Err(NS_ERROR_INVALID_ARG);
+            return Err(Error::InvalidArgument);
         }
 
         Ok(Initiator {
@@ -217,12 +207,14 @@ impl DerefMut for Initiator {
     }
 }
 
+#[cfg(feature = "xpcom")]
 /// `nsICtapCableInitiator`-compatible XPCOM wrapper for [`Initiator`][].
 #[xpcom(implement(nsICtapCableInitiator), atomic)]
 struct CtapCableInitiator {
     inner: Mutex<Initiator>,
 }
 
+#[cfg(feature = "xpcom")]
 impl From<Initiator> for RefPtr<CtapCableInitiator> {
     fn from(value: Initiator) -> Self {
         CtapCableInitiator::allocate(InitCtapCableInitiator {
@@ -231,8 +223,10 @@ impl From<Initiator> for RefPtr<CtapCableInitiator> {
     }
 }
 
+#[cfg(feature = "xpcom")]
 xpcchannel_impl!(Initiator, CtapCableInitiator);
 
+#[cfg(feature = "xpcom")]
 impl CtapCableInitiator {
     xpcom_method!(get_handshake_hash => GetHandshakeHash() -> ThinVec<u8>);
     fn get_handshake_hash(&self) -> Result<ThinVec<u8>> {
@@ -241,6 +235,7 @@ impl CtapCableInitiator {
     }
 }
 
+#[cfg(feature = "xpcom")]
 /// `nsICtapCableInitiatorHandshake`-compatible XPCOM wrapper for [`InitiatorHandshake`][].
 ///
 /// This can only be used once, after which point it is "consumed".
@@ -249,9 +244,10 @@ pub struct CtapCableInitiatorHandshake {
     inner: Mutex<Option<InitiatorHandshake>>,
 }
 
+#[cfg(feature = "xpcom")]
 impl CtapCableInitiatorHandshake {
     fn get_self(&self) -> Result<MutexGuard<'_, Option<InitiatorHandshake>>> {
-        self.inner.lock().map_err(|_| NS_ERROR_FAILURE)
+        self.inner.lock().map_err(|_| Error::Internal)
     }
 
     xpcom_method!(is_consumed => GetConsumed() -> bool);
@@ -266,7 +262,7 @@ impl CtapCableInitiatorHandshake {
         guard
             .as_ref()
             .map(|h| ThinVec::from(h.initial_message().as_slice()))
-            .ok_or(NS_ERROR_DOM_INVALID_STATE_ERR)
+            .ok_or(Error::InvalidState)
     }
 
     xpcom_method!(process_handshake_response => ProcessHandshakeResponse(
@@ -275,19 +271,20 @@ impl CtapCableInitiatorHandshake {
         &self,
         response_message: &ThinVec<u8>,
     ) -> Result<RefPtr<nsICtapCableInitiator>> {
-        let mut guard = self.inner.lock().map_err(|_| NS_ERROR_FAILURE)?;
-        let guard = guard.take().ok_or(NS_ERROR_DOM_INVALID_STATE_ERR)?;
+        let mut guard = self.get_self()?;
+        let guard = guard.take().ok_or(Error::InvalidState)?;
         let initiator = guard.process_handshake_response(response_message)?;
 
         let initiator: RefPtr<CtapCableInitiator> = initiator.into();
         let initiator = initiator
             .query_interface::<nsICtapCableInitiator>()
-            .ok_or(NS_ERROR_FAILURE)?;
+            .ok_or(Error::Internal)?;
 
         Ok(initiator)
     }
 }
 
+#[cfg(feature = "xpcom")]
 impl From<InitiatorHandshake> for RefPtr<CtapCableInitiatorHandshake> {
     fn from(value: InitiatorHandshake) -> Self {
         CtapCableInitiatorHandshake::allocate(InitCtapCableInitiatorHandshake {

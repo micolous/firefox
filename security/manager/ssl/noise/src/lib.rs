@@ -4,9 +4,7 @@
 
 //! Implements a subset of Noise protocol used by the CTAP caBLE/Hybrid transport.
 
-extern crate nserror;
-extern crate nss_rs;
-extern crate sha2;
+#[cfg(feature = "xpcom")]
 #[macro_use]
 extern crate xpcom;
 
@@ -14,6 +12,7 @@ pub mod base10;
 #[macro_use]
 mod channel;
 mod ec;
+mod error;
 mod handshake;
 mod hash;
 mod padding;
@@ -23,11 +22,12 @@ use nss_rs::aead::AeadAlgorithms;
 
 pub use crate::{
     channel::Channel,
+    error::Error,
     handshake::{Initiator, InitiatorHandshake, Responder},
     hash::Sha256,
     symmetric_state::SymmetricState,
 };
 
-pub type Result<T = ()> = std::result::Result<T, nserror::nsresult>;
+pub type Result<T = ()> = std::result::Result<T, Error>;
 pub const ALG: AeadAlgorithms = AeadAlgorithms::Aes256Gcm;
 pub const KEY_LENGTH: usize = ALG.key_len() as usize;

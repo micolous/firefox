@@ -56,7 +56,7 @@ add_task(async function test_cable_handshake_knpsk0() {
 
   throws(
     () => initiator.decrypt(ct),
-    /NS_ERROR_FAILURE/,
+    /NS_ERROR_ILLEGAL_VALUE/,
     "decrypting the responder's message again should fail"
   );
 
@@ -71,7 +71,7 @@ add_task(async function test_cable_handshake_knpsk0() {
 
   throws(
     () => responder.decrypt(ct),
-    /NS_ERROR_FAILURE/,
+    /NS_ERROR_ILLEGAL_VALUE/,
     "decrypting the initiator's message again should fail"
   );
 });
