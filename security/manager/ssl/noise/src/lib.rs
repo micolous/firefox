@@ -20,6 +20,7 @@ mod padding;
 mod symmetric_state;
 
 use nss_rs::aead::AeadAlgorithms;
+use std::fmt::Write as _;
 
 pub use crate::{
     channel::Channel,
@@ -32,3 +33,14 @@ pub use crate::{
 pub type Result<T = ()> = std::result::Result<T, Error>;
 pub const ALG: AeadAlgorithms = AeadAlgorithms::Aes256Gcm;
 pub const KEY_LENGTH: usize = ALG.key_len() as usize;
+
+/// Convert `buf` to an upper-case, base16 encoded string.
+#[must_use]
+fn hex<A: AsRef<[u8]>>(buf: A) -> String {
+    let buf = buf.as_ref();
+    let mut ret = String::with_capacity(buf.len() * 2);
+    for b in buf {
+        write!(&mut ret, "{b:02X}").expect("write OK");
+    }
+    ret
+}
