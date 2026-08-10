@@ -7,7 +7,11 @@
 use crate::{Error, Result};
 #[cfg(feature = "xpcom")]
 use nss_rs::ec::{convert_to_public, EcdhKeypair, EcdhPrivateKey};
-use nss_rs::{der, ec::EcdhPublicKey /* p11::KeyType_ecKey */};
+use nss_rs::{
+    der,
+    ec::{import_ec_public_key_from_spki, EcdhPublicKey},
+    /* p11::KeyType_ecKey */
+};
 
 pub const P256_X962_LENGTH: usize = 65;
 const P256_X962_DER_LENGTH: usize = SECP256R1_DER_PUBKEY_HEADER.len() + P256_X962_LENGTH;
@@ -55,6 +59,46 @@ const SECP256R1_DER_ALT_BYTES: [u8; 3] = [der::TAG_OCTET_STRING, P256_X962_LENGT
 const P256_X962_DER_ALT_LENGTH: usize = P256_X962_LENGTH + 2;
 
 pub const P256_X962_COMPRESSED_LENGTH: usize = 33;
+const P256_X962_COMPRESSED_DER_LENGTH: usize =
+    SECP256R1_COMPRESSED_DER_PUBKEY_HEADER.len() + P256_X962_COMPRESSED_LENGTH;
+
+/// Static DER header for an uncompressed SEC.1 P-256 point in DER format.
+// TODO: rewrite with `concat_bytes!` once stable
+const SECP256R1_COMPRESSED_DER_PUBKEY_HEADER: [u8; 26] = [
+    // SubjectPublicKeyInfo
+    der::TAG_SEQUENCE,
+    (24 + P256_X962_COMPRESSED_LENGTH) as u8,
+    // algorithm: AlgorithmIdentifier
+    der::TAG_SEQUENCE,
+    0x13,
+    // algorithm
+    der::TAG_OBJECT_ID,
+    0x07,
+    // OID_EC_PUBLIC_KEY_BYTES
+    0x2a,
+    0x86,
+    0x48,
+    0xce,
+    0x3d,
+    0x02,
+    0x01,
+    // parameters
+    der::TAG_OBJECT_ID,
+    0x08,
+    // OID_SECP256R1_BYTES
+    0x2a,
+    0x86,
+    0x48,
+    0xce,
+    0x3d,
+    0x03,
+    0x01,
+    0x07,
+    // subjectPublicKey
+    der::TAG_BIT_STRING,
+    (P256_X962_COMPRESSED_LENGTH + 1) as u8,
+    0x00,
+];
 
 #[cfg(feature = "xpcom")]
 /// Convert an [`EcdhPrivateKey`] into an [`EcdhKeypair`].
@@ -75,6 +119,50 @@ pub fn sec1_ec2_key_to_der(key: &[u8; P256_X962_LENGTH]) -> Result<Vec<u8>> {
     o.extend_from_slice(key);
 
     Ok(o)
+}
+
+/// Convert a compressed SEC.1 P-256 point into DER format for NSS.
+pub fn compressed_sec1_ec2_key_to_der(key: &[u8; P256_X962_COMPRESSED_LENGTH]) -> Result<Vec<u8>> {
+    if key[0] != 0x02 && key[0] != 0x03 {
+        // incorrect format
+        return Err(Error::InvalidArgument);
+    }
+
+    let mut o = Vec::with_capacity(P256_X962_COMPRESSED_DER_LENGTH);
+    o.extend_from_slice(&SECP256R1_COMPRESSED_DER_PUBKEY_HEADER);
+    o.extend_from_slice(key);
+
+    Ok(o)
+}
+
+/// Convert a P-256 [`EcdhPublicKey`] to compressed SEC.1 bytes.
+///
+/// This returns [`P256_X962_COMPRESSED_LENGTH`] bytes.
+pub fn ec2_pubkey_to_compressed_sec1(key: &EcdhPublicKey) -> Result<Vec<u8>> {
+    // TODO: Replace with a proper API https://github.com/mozilla/nss-rs/issues/140 / Bug 2070803
+    // TODO: Needs https://github.com/mozilla/nss-rs/pull/121 uplifted.
+    // let ptr = unsafe { key.as_ref() }.ok_or(Error::InvalidArgument)?;
+    // key_data() allows ecKey and ecMontKey, because these are valid for HPKE.
+    // if ptr.keyType != KeyType_ecKey {
+    //     return Err(Error::InvalidArgument);
+    // }
+
+    let mut pub_bytes = key.key_data()?;
+    if pub_bytes.len() == P256_X962_COMPRESSED_LENGTH && (pub_bytes[0] == 2 || pub_bytes[0] == 3) {
+        // PK11_HPKE_Serialize always outputs in the form it was imported in, so if that was
+        // compressed, it stays that way: https://github.com/mozilla/nss-rs/issues/136.
+        return Ok(pub_bytes);
+    }
+
+    if pub_bytes.len() != P256_X962_LENGTH || pub_bytes[0] != 4 {
+        // incorrect format
+        return Err(Error::InvalidArgument);
+    }
+
+    // 0x02 = even, 0x03 = odd
+    pub_bytes[0] = (pub_bytes[64] & 1) | 2;
+    pub_bytes.truncate(P256_X962_COMPRESSED_LENGTH);
+    Ok(pub_bytes)
 }
 
 /// Convert a P-256 [`EcdhPublicKey`] to uncompressed SEC.1 bytes.
@@ -121,4 +209,19 @@ pub fn ec2_pubkey_to_uncompressed_sec1(key: &EcdhPublicKey) -> Result<[u8; P256_
 
     // Uncompressed SEC.1 bytes wrapped in a DER octet string.
     pub_bytes[2..].try_into().map_err(|_| Error::Internal)
+}
+
+/// Import a raw compressed P-256 SEC.1 public key.
+pub fn import_compressed_ec2_pubkey(
+    key: &[u8; P256_X962_COMPRESSED_LENGTH],
+) -> Result<EcdhPublicKey> {
+    // Convert the key to DER format first, and import it.
+    let compressed_der = compressed_sec1_ec2_key_to_der(key)?;
+    let compressed_key = import_ec_public_key_from_spki(&compressed_der)?;
+
+    // Export the key again and re-import the key in uncompressed form, because otherwise
+    // because otherwise `ecdh` fails: https://github.com/mozilla/nss-rs/issues/136
+    let uncompressed_raw = ec2_pubkey_to_uncompressed_sec1(&compressed_key)?;
+    let uncompressed_der = sec1_ec2_key_to_der(&uncompressed_raw)?;
+    Ok(import_ec_public_key_from_spki(&uncompressed_der)?)
 }
