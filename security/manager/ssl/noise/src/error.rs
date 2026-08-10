@@ -17,6 +17,9 @@ pub enum Error {
     #[error("Internal error")]
     Internal,
 
+    #[error("Not implemented")]
+    NotImplemented,
+
     #[error("NSS error: {0}")]
     Nss(#[from] nss_rs::Error),
 
@@ -34,13 +37,17 @@ impl From<HkdfError> for Error {
 #[cfg(feature = "xpcom")]
 impl From<Error> for nserror::nsresult {
     fn from(value: Error) -> Self {
-        use nserror::{NS_ERROR_DOM_INVALID_STATE_ERR, NS_ERROR_FAILURE, NS_ERROR_INVALID_ARG};
+        use nserror::{
+            NS_ERROR_DOM_INVALID_STATE_ERR, NS_ERROR_FAILURE, NS_ERROR_INVALID_ARG,
+            NS_ERROR_NOT_IMPLEMENTED,
+        };
         use Error::*;
 
         match value {
             Internal | HkdfError | Nss(_) => NS_ERROR_FAILURE,
             InvalidArgument => NS_ERROR_INVALID_ARG,
             InvalidState => NS_ERROR_DOM_INVALID_STATE_ERR,
+            NotImplemented => NS_ERROR_NOT_IMPLEMENTED,
         }
     }
 }
