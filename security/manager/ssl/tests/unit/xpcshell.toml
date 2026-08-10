@@ -184,6 +184,8 @@ skip-if = [
 
 ["test_ctap_cable_channel.js"]
 
+["test_ctap_cable_discovery.js"]
+
 ["test_ctap_cable_handshake.js"]
 
 ["test_data_storage.js"]
