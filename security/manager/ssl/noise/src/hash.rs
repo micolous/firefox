@@ -7,7 +7,10 @@
 //! <https://noiseprotocol.org/noise.html#hash-functions>
 
 use crate::{handshake::HandshakeType, Error, Result};
-use nss_rs::hkdf::{Hkdf, HkdfAlgorithm};
+use nss_rs::{
+    hkdf::{Hkdf, HkdfAlgorithm},
+    hmac::HmacAlgorithm,
+};
 use sha2::Digest;
 pub use sha2::Sha256;
 
@@ -23,6 +26,9 @@ pub use sha2::Sha256;
 pub trait Hash: Digest {
     /// NSS HKDF algorithm for the hash.
     const HKDF_ALGORITHM: HkdfAlgorithm;
+
+    /// NSS HMAC algorithm for the hash.
+    const HMAC_ALGORITHM: HmacAlgorithm;
 
     /// A constant specifying the size in bytes of the hash output. Must be either 32 or 64 bytes.
     fn hash_len() -> usize {
@@ -62,6 +68,7 @@ pub trait Hash: Digest {
 
 impl Hash for Sha256 {
     const HKDF_ALGORITHM: HkdfAlgorithm = HkdfAlgorithm::HKDF_SHA2_256;
+    const HMAC_ALGORITHM: HmacAlgorithm = HmacAlgorithm::HMAC_SHA2_256;
 
     fn protocol_name(ht: HandshakeType) -> &'static [u8] {
         match ht {
