@@ -52,6 +52,7 @@ mod about_webauthn_controller;
 use about_webauthn_controller::*;
 mod test_token;
 use test_token::TestTokenManager;
+mod cable;
 
 fn authrs_to_nserror(e: AuthenticatorError) -> nsresult {
     match e {
