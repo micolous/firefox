@@ -1393,6 +1393,7 @@ CONTENT = {
       ],
     },
     options: {
+      autofocus: true,
       persistWhileVisible: true,
       hideClose: true,
 
@@ -1447,6 +1448,7 @@ CONTENT = {
       ],
     },
     options: {
+      autofocus: true,
       persistWhileVisible: true,
       hideClose: true,
     },
