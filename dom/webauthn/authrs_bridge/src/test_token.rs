@@ -2,52 +2,61 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use authenticator::authenticatorservice::{RegisterArgs, SignArgs};
-use authenticator::crypto::{ecdsa_p256_sha256_sign_raw, COSEAlgorithm, COSEKey, SharedSecret};
-use authenticator::ctap2::{
-    attestation::{
-        AAGuid, AttestationObject, AttestationStatement, AttestationStatementPacked,
-        AttestedCredentialData, AuthenticatorData, AuthenticatorDataFlags, Extension,
-        HmacSecretResponse,
-    },
-    client_data::ClientDataHash,
-    commands::{
-        client_pin::{ClientPIN, ClientPinResponse, PINSubcommand},
-        get_assertion::{
-            GetAssertion, GetAssertionResponse, GetAssertionResult, HmacGetSecretOrPrf,
-            HmacSecretExtension,
+use authenticator::{
+    authenticatorservice::{RegisterArgs, SignArgs},
+    crypto::{ecdsa_p256_sha256_sign_raw, COSEAlgorithm, COSEKey, SharedSecret},
+    ctap2::{
+        self,
+        attestation::{
+            AAGuid, AttestationObject, AttestationStatement, AttestationStatementPacked,
+            AttestedCredentialData, AuthenticatorData, AuthenticatorDataFlags, Extension,
+            HmacSecretResponse,
         },
-        get_info::{AuthenticatorInfo, AuthenticatorOptions, AuthenticatorVersion},
-        get_version::{GetVersion, U2FInfo},
-        make_credentials::{HmacCreateSecretOrPrf, MakeCredentials, MakeCredentialsResult},
-        reset::Reset,
-        selection::Selection,
-        RequestCtap1, RequestCtap2, StatusCode,
+        client_data::ClientDataHash,
+        commands::{
+            client_pin::{ClientPIN, ClientPinResponse, PINSubcommand},
+            get_assertion::{
+                GetAssertion, GetAssertionResponse, GetAssertionResult, HmacGetSecretOrPrf,
+                HmacSecretExtension,
+            },
+            get_info::{AuthenticatorInfo, AuthenticatorOptions, AuthenticatorVersion},
+            get_version::{GetVersion, U2FInfo},
+            make_credentials::{HmacCreateSecretOrPrf, MakeCredentials, MakeCredentialsResult},
+            reset::Reset,
+            selection::Selection,
+            RequestCtap1, RequestCtap2, StatusCode,
+        },
+        preflight::CheckKeyHandle,
+        server::{
+            AuthenticatorAttachment, CredentialProtectionPolicy, PublicKeyCredentialDescriptor,
+            PublicKeyCredentialUserEntity, RelyingParty,
+        },
     },
-    preflight::CheckKeyHandle,
-    server::{
-        AuthenticatorAttachment, CredentialProtectionPolicy, PublicKeyCredentialDescriptor,
-        PublicKeyCredentialUserEntity, RelyingParty,
-    },
+    errors::{AuthenticatorError, CommandError, HIDError, U2FTokenError},
+    statecallback::StateCallback,
+    FidoDevice, FidoDeviceIO, FidoProtocol, RegisterResult, SignResult, StatusUpdate,
+    VirtualFidoDevice,
 };
-use authenticator::errors::{AuthenticatorError, CommandError, HIDError, U2FTokenError};
-use authenticator::{ctap2, statecallback::StateCallback};
-use authenticator::{FidoDevice, FidoDeviceIO, FidoProtocol, VirtualFidoDevice};
-use authenticator::{RegisterResult, SignResult, StatusUpdate};
 use base64::Engine;
 use moz_task::RunnableBuilder;
 use nserror::{nsresult, NS_ERROR_FAILURE, NS_ERROR_INVALID_ARG, NS_OK};
 use nsstring::{nsACString, nsAString, nsCString, nsString};
 use rand::{thread_rng, RngCore};
-use std::cell::{Ref, RefCell};
-use std::collections::{hash_map::Entry, HashMap};
-use std::ops::{Deref, DerefMut};
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::mpsc::Sender;
-use std::sync::{Arc, Mutex};
+use std::{
+    cell::{Ref, RefCell},
+    collections::{hash_map::Entry, HashMap},
+    ops::{Deref, DerefMut},
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        mpsc::Sender,
+        Arc, Mutex,
+    },
+};
 use thin_vec::ThinVec;
-use xpcom::interfaces::{nsICredentialParameters, nsIWebAuthnAutoFillEntry};
-use xpcom::{xpcom_method, RefPtr};
+use xpcom::{
+    interfaces::{nsICredentialParameters, nsIWebAuthnAutoFillEntry},
+    xpcom_method, RefPtr,
+};
 
 // All TestTokens use this fixed, randomly generated, AAGUID
 const VIRTUAL_TOKEN_AAGUID: AAGuid = AAGuid([
@@ -211,6 +220,16 @@ impl TestToken {
                 info.max_supported_version()
             })
     }
+
+    fn make_cred_uv_not_rqd(&self) -> Option<bool> {
+        // CTAP 2.1: Authenticators SHOULD include this option with the value `true`
+        // ...and virtual authenticators don't support alwaysUv.
+        if self.versions.contains(&AuthenticatorVersion::FIDO_2_1) {
+            Some(true)
+        } else {
+            None
+        }
+    }
 }
 
 impl FidoDevice for TestToken {
@@ -219,7 +238,14 @@ impl FidoDevice for TestToken {
     }
 
     fn should_try_ctap2(&self) -> bool {
-        true
+        self.versions.iter().any(|v| {
+            matches!(
+                v,
+                AuthenticatorVersion::FIDO_2_0
+                    | AuthenticatorVersion::FIDO_2_1
+                    | AuthenticatorVersion::FIDO_2_1_PRE
+            )
+        })
     }
 
     fn initialized(&self) -> bool {
@@ -375,7 +401,10 @@ impl VirtualFidoDevice for TestToken {
 
         // 6. User verification
         // TODO: Permissions, (maybe) validate pinUvAuthParam
-        if self.is_user_verified && (effective_uv_opt || req.pin_uv_auth_param.is_some()) {
+        if self.has_user_verification
+            && self.is_user_verified
+            && (effective_uv_opt || req.pin_uv_auth_param.is_some())
+        {
             flags |= AuthenticatorDataFlags::USER_VERIFIED;
         }
 
@@ -507,14 +536,47 @@ impl VirtualFidoDevice for TestToken {
     }
 
     fn get_info(&self) -> Result<AuthenticatorInfo, HIDError> {
-        // This is a CTAP2.1 device with internal user verification support
+        if !self.should_try_ctap2() {
+            return Err(HIDError::UnexpectedVersion);
+        }
+
+        // WebAuthn-3 §11.2 says `hasUserVerification` means "supports user verification", and
+        // doesn't have a direct way to express whether it is "configured" (beyond
+        // `isUserVerified = true`).
+        //
+        // Chromium treats `hasUserVerification` as "has configured user verification":
+        // https://source.chromium.org/chromium/chromium/src/+/main:content/browser/webauth/virtual_authenticator.cc;l=43-45;drc=a0cee738d83fd39c5d3070167602b869e6cf5163
+        //
+        // CTAP 2.1-2.3 §9 say supporting some form of UV is mandatory if the authenticator supports
+        // RKs. This handles `hasUserVerification = false` in line with those requirements:
+        //
+        // * if `hasResidentKey = true`: the device supports user verification, but it is not
+        //   configured (ie: no biometrics or PIN enrolled)
+        // * if `hasResidentKey = false`: the device does not support user verification
+        //
+        // If `hasUserVerification = true`, then user verification is supported and configured,
+        // regardless of `hasResidentKey`.
+        let user_verification = if !self.has_user_verification && !self.has_resident_key {
+            // Don't support user verification, because it's not required.
+            None
+        } else {
+            Some(self.has_user_verification)
+        };
+
+        // This is a CTAP2 device, which may have internal user verification support
         Ok(AuthenticatorInfo {
             versions: self.versions.clone(),
             options: AuthenticatorOptions {
                 platform_device: self.transport == "internal",
                 resident_key: self.has_resident_key,
-                pin_uv_auth_token: Some(self.has_user_verification),
-                user_verification: Some(self.has_user_verification),
+                user_verification,
+                // CTAP 2.1 §9 mandatory feature
+                pin_uv_auth_token: if user_verification.unwrap_or_default() {
+                    Some(true)
+                } else {
+                    None
+                },
+                make_cred_uv_not_rqd: self.make_cred_uv_not_rqd(),
                 ..Default::default()
             },
             ..Default::default()
@@ -522,7 +584,11 @@ impl VirtualFidoDevice for TestToken {
     }
 
     fn get_version(&self, _req: &GetVersion) -> Result<U2FInfo, HIDError> {
-        Err(HIDError::UnsupportedCommand)
+        if self.versions.contains(&AuthenticatorVersion::U2F_V2) {
+            Ok(U2FInfo::U2F_V2)
+        } else {
+            Err(HIDError::UnsupportedCommand)
+        }
     }
 
     fn make_credentials(&self, req: &MakeCredentials) -> Result<MakeCredentialsResult, HIDError> {
@@ -578,15 +644,39 @@ impl VirtualFidoDevice for TestToken {
         // 6. alwaysUv option ID
         // (not implemented)
 
-        // 7. and 8. makeCredUvNotRqd option ID
-        // (not implemented)
+        if self.make_cred_uv_not_rqd().unwrap_or_default() {
+            // 7. makeCredUvNotRqd option ID is present and set to true
+            if self.has_user_verification
+                && !effective_uv_opt
+                && req.pin_uv_auth_param.is_none()
+                && req.options.resident_key.unwrap_or_default()
+            {
+                // We never have the clientPIN option ID, so return CTAP2_ERR_OPERATION_DENIED
+                return Err(HIDError::Command(CommandError::StatusCode(
+                    StatusCode::OperationDenied,
+                    None,
+                )));
+            }
+        } else {
+            // 8. makeCredUvNotRqd option ID is false or absent
+            if self.has_user_verification && !effective_uv_opt && req.pin_uv_auth_param.is_none() {
+                // We never have the clientPIN option ID, so return CTAP2_ERR_OPERATION_DENIED
+                return Err(HIDError::Command(CommandError::StatusCode(
+                    StatusCode::OperationDenied,
+                    None,
+                )));
+            }
+        }
 
         // 9. enterprise attestation
         // (not implemented)
 
         // 11. User verification
         // TODO: Permissions, (maybe) validate pinUvAuthParam
-        if self.is_user_verified {
+        if self.has_user_verification
+            && self.is_user_verified
+            && (effective_uv_opt || req.pin_uv_auth_param.is_some())
+        {
             flags |= AuthenticatorDataFlags::USER_VERIFIED;
         }
 
@@ -803,9 +893,33 @@ impl TestTokenManager {
         is_user_consenting: bool,
         is_user_verified: bool,
     ) -> Result<String, nsresult> {
+        // This assumes that fallbacks are always allowed. A virtual authenticator only has a
+        // single version parameter: https://github.com/w3c/webauthn/issues/2468
+        let versions = match protocol {
+            AuthenticatorVersion::Unknown | AuthenticatorVersion::U2F_V2 => vec![protocol],
+            AuthenticatorVersion::FIDO_2_0 => {
+                vec![protocol, AuthenticatorVersion::U2F_V2]
+            }
+            AuthenticatorVersion::FIDO_2_1_PRE => {
+                vec![
+                    protocol,
+                    AuthenticatorVersion::FIDO_2_0,
+                    AuthenticatorVersion::U2F_V2,
+                ]
+            }
+            AuthenticatorVersion::FIDO_2_1 => {
+                vec![
+                    protocol,
+                    AuthenticatorVersion::FIDO_2_1_PRE,
+                    AuthenticatorVersion::FIDO_2_0,
+                    AuthenticatorVersion::U2F_V2,
+                ]
+            }
+        };
+
         let mut guard = self.state.lock().map_err(|_| NS_ERROR_FAILURE)?;
         let token = TestToken::new(
-            vec![protocol],
+            versions,
             transport,
             has_resident_key,
             has_user_verification,
