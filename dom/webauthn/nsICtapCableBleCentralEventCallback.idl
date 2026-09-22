@@ -1,0 +1,33 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#include "nsISupports.idl"
+
+[scriptable, uuid(84457ca4-492c-467d-8504-870ba09912de)]
+interface nsICtapCableBleCentralEventCallback : nsISupports {
+    /**
+     * Central has recieved a BLE "service data" advertisement (type 0x16).
+     *
+     * Reports in short-form UUIDs (16/32-bit) will be transformed into
+     * long-form (128-bit) using
+     * `(short_uuid << 96 | h”00000000-0000-1000-8000-00805F9B34FB”)`.
+     *
+     * <https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core-60/out/en/host/service-discovery-protocol--sdp--specification.html#UUID-5f7f2ee0-5e87-0c77-417f-fd7aac61f6f5>
+     * <https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/CSS_v15/out/en/core-supplementary-features/data-types-specification.html#UUID-dea15cd4-bc0f-91f0-82c1-3bbe596f7bf6>
+     */
+    void serviceDataAdvert(
+        in Array<octet> aPeripheralId,
+        in nsIDRef aServiceID,
+        in Array<octet> aData);
+
+    /**
+     * Adapter has changed state. Values per `nsICtapCableBleCentral.state`.
+     */
+    void stateUpdate(in octet aState);
+
+    /**
+     * Called when scanning has stopped.
+     */
+    void stopped();
+};

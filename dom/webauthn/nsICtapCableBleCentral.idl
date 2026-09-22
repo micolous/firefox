@@ -1,0 +1,69 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#include "nsISupports.idl"
+#include "nsICtapCableBleCentralEventCallback.idl"
+
+/**
+ * Implements the Central (host / initiator) role in BLE, and can connect to
+ * Peripherals. This normally corresponds to a BLE adapter on a computer.
+ *
+ * This has an internal reference to the `nsICtapCableBleManager` that created
+ * it.
+ */
+[scriptable, uuid(4b514f88-212e-41fc-b9d3-d6394ee63ea7)]
+interface nsICtapCableBleCentral : nsISupports {
+    /**
+     * Start scanning for caBLE advertisements, including duplicate
+     * advertisements.
+     *
+     * This will only work if the Central is in the "on" state.
+     *
+     * This corresponds to
+     * `HCI_LE_Set_Scan_Enable(LE_Scan_Enable=1, Filter_Duplicates=0)` in the
+     * Bluetooth HCI.
+     *
+     * <https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core-60/out/en/host-controller-interface/host-controller-interface-functional-specification.html#UUID-bf0262b2-c9d0-b457-8405-5cf531a0bff1>
+     */
+    void startScan(
+        in uint32_t aDurationMS,
+        in nsICtapCableBleCentralEventCallback aCallback);
+
+    /**
+     * Stop scanning for caBLE advertisements.
+     *
+     * This corresponds to `HCI_LE_Set_Scan_Enable(LE_Scan_Enable=0)` in the
+     * Bluetooth HCI.
+     *
+     * <https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core-60/out/en/host-controller-interface/host-controller-interface-functional-specification.html#UUID-bf0262b2-c9d0-b457-8405-5cf531a0bff1>
+     */
+    void stopScan();
+
+    /**
+     * Name of the BLE adapter. This is for debugging, and doesn't have any
+     * defined format.
+     */
+    readonly attribute ACString adapterName;
+
+    /**
+     * Unknown adapter state, possible permission issue.
+     */
+    const octet STATE_UNKNOWN = 0;
+
+    /**
+     * Adapter is powered off and unusable (eg: flight mode), user should be
+     * prompted to enable Bluetooth.
+     */
+    const octet STATE_OFF = 1;
+
+    /**
+     * Adapter is powered on and usable.
+     */
+    const octet STATE_ON = 2;
+
+    /**
+     * Get the current state of the BLE adapter (one of `STATE_*` values).
+     */
+    readonly attribute octet state;
+};

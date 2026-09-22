@@ -16,6 +16,9 @@ XPCOM_MANIFESTS += [
 ]
 
 XPIDL_SOURCES += [
+    "nsICtapCableBleCentral.idl",
+    "nsICtapCableBleCentralEventCallback.idl",
+    "nsICtapCableBleManager.idl",
     "nsIWebAuthnArgs.idl",
     "nsIWebAuthnAttObj.idl",
     "nsIWebAuthnPromise.idl",

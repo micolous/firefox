@@ -1,0 +1,21 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#include "nsISupports.idl"
+#include "nsICtapCableBleCentral.idl"
+
+[scriptable, uuid(e21cc10a-ad6d-4a5c-8759-1bd3174a0e0f)]
+interface nsICtapCableBleManager : nsISupports {
+    /**
+     * Get a list of handles to all connected Bluetooth LE adapters on the
+     * system which are usable as a Central.
+     *
+     * `nsICtapCableBleCentral` is an opaque wrapper for a platform-specific
+     * type.
+     *
+     * If the user has denied access to Bluetooth (eg: macOS entitlements), this
+     * returns an error.
+     */
+    Array<nsICtapCableBleCentral> getCentrals();
+};
