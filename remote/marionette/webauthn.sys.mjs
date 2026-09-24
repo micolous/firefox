@@ -6,6 +6,10 @@ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};
 
+ChromeUtils.defineESModuleGetters(lazy, {
+  error: "chrome://remote/content/shared/webdriver/Errors.sys.mjs",
+});
+
 XPCOMUtils.defineLazyServiceGetter(
   lazy,
   "webauthnService",
@@ -44,6 +48,26 @@ webauthn.TransportType = {
 };
 
 /**
+ * Convert an XPCOM error to a WebDriver error.
+ *
+ * @param {Error} e Error thrown by XPCOM call
+ * @returns {lazy.error.WebDriverError} Converted error
+ */
+webauthn.convertError = function (e) {
+  let targetErrorClass = lazy.error.UnknownError;
+  switch (e.name) {
+    case "NS_ERROR_ILLEGAL_VALUE":
+      targetErrorClass = lazy.error.InvalidArgumentError;
+      break;
+    case "NS_ERROR_NOT_IMPLEMENTED":
+      targetErrorClass = lazy.error.UnknownCommandError;
+      break;
+  }
+
+  return lazy.error.wrap(e, targetErrorClass);
+};
+
+/**
  * Add a credential to a virtual authenticator.
  *
  * @param {string} authenticatorId
@@ -62,12 +86,12 @@ webauthn.TransportType = {
  * @param {string} credentials.privateKey
  *     An asymmetric key package containing a single private key per RFC5958,
  *     encoded using Base64url Encoding.
- * @param {string} [credentials.userHandle]
- *     The userHandle associated with the credential, encoded using Base64url
- *     Encoding.
  * @param {number} credentials.signCount
  *     The initial value for a signature counter associated with the public
  *     key credential source.
+ * @param {string} [credentials.userHandle]
+ *     The userHandle associated with the credential, encoded using Base64url
+ *     Encoding. This property may not be defined.
  */
 webauthn.addCredential = function (authenticatorId, credentials) {
   const {
@@ -75,19 +99,23 @@ webauthn.addCredential = function (authenticatorId, credentials) {
     isResidentCredential,
     rpId,
     privateKey,
-    userHandle,
     signCount,
+    userHandle,
   } = credentials;
 
-  lazy.webauthnService.addCredential(
-    authenticatorId,
-    credentialId,
-    isResidentCredential,
-    rpId,
-    privateKey,
-    userHandle,
-    signCount
-  );
+  try {
+    lazy.webauthnService.addCredential(
+      authenticatorId,
+      credentialId,
+      isResidentCredential,
+      rpId,
+      privateKey,
+      signCount,
+      userHandle
+    );
+  } catch (e) {
+    throw webauthn.convertError(e);
+  }
 };
 
 /**
@@ -123,14 +151,18 @@ webauthn.addVirtualAuthenticator = function (config) {
     isUserVerified = false,
   } = config;
 
-  return lazy.webauthnService.addVirtualAuthenticator(
-    protocol,
-    transport,
-    hasResidentKey,
-    hasUserVerification,
-    isUserConsenting,
-    isUserVerified
-  );
+  try {
+    return lazy.webauthnService.addVirtualAuthenticator(
+      protocol,
+      transport,
+      hasResidentKey,
+      hasUserVerification,
+      isUserConsenting,
+      isUserVerified
+    );
+  } catch (e) {
+    throw webauthn.convertError(e);
+  }
 };
 
 /**
@@ -143,7 +175,11 @@ webauthn.addVirtualAuthenticator = function (config) {
  *     The credentials stored on the virtual authenticator.
  */
 webauthn.getCredentials = function (authenticatorId) {
-  return lazy.webauthnService.getCredentials(authenticatorId);
+  try {
+    return lazy.webauthnService.getCredentials(authenticatorId);
+  } catch (e) {
+    throw webauthn.convertError(e);
+  }
 };
 
 /**
@@ -155,7 +191,11 @@ webauthn.getCredentials = function (authenticatorId) {
  *     The ID of the credential to remove.
  */
 webauthn.removeCredential = function (authenticatorId, credentialId) {
-  lazy.webauthnService.removeCredential(authenticatorId, credentialId);
+  try {
+    lazy.webauthnService.removeCredential(authenticatorId, credentialId);
+  } catch (e) {
+    throw webauthn.convertError(e);
+  }
 };
 
 /**
@@ -165,7 +205,11 @@ webauthn.removeCredential = function (authenticatorId, credentialId) {
  *     The ID of the virtual authenticator to remove all credentials from.
  */
 webauthn.removeAllCredentials = function (authenticatorId) {
-  lazy.webauthnService.removeAllCredentials(authenticatorId);
+  try {
+    lazy.webauthnService.removeAllCredentials(authenticatorId);
+  } catch (e) {
+    throw webauthn.convertError(e);
+  }
 };
 
 /**
@@ -179,7 +223,11 @@ webauthn.removeAllCredentials = function (authenticatorId) {
  *     True if an authenticator with the given ID exists.
  */
 webauthn.hasVirtualAuthenticator = function (authenticatorId) {
-  return lazy.webauthnService.hasVirtualAuthenticator(authenticatorId);
+  try {
+    return lazy.webauthnService.hasVirtualAuthenticator(authenticatorId);
+  } catch (e) {
+    throw webauthn.convertError(e);
+  }
 };
 
 /**
@@ -189,7 +237,11 @@ webauthn.hasVirtualAuthenticator = function (authenticatorId) {
  *     The ID of the virtual authenticator to remove.
  */
 webauthn.removeVirtualAuthenticator = function (authenticatorId) {
-  lazy.webauthnService.removeVirtualAuthenticator(authenticatorId);
+  try {
+    lazy.webauthnService.removeVirtualAuthenticator(authenticatorId);
+  } catch (e) {
+    throw webauthn.convertError(e);
+  }
 };
 
 /**
@@ -203,5 +255,9 @@ webauthn.removeVirtualAuthenticator = function (authenticatorId) {
  * @see https://www.w3.org/TR/webauthn-3/#sctn-automation-set-user-verified
  */
 webauthn.setUserVerified = function (authenticatorId, isUserVerified) {
-  lazy.webauthnService.setUserVerified(authenticatorId, isUserVerified);
+  try {
+    lazy.webauthnService.setUserVerified(authenticatorId, isUserVerified);
+  } catch (e) {
+    throw webauthn.convertError(e);
+  }
 };

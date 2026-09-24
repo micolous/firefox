@@ -1484,13 +1484,9 @@ MacOSWebAuthnService::RemoveVirtualAuthenticator(
 }
 
 NS_IMETHODIMP
-MacOSWebAuthnService::AddCredential(const nsACString& aAuthenticatorId,
-                                    const nsACString& aCredentialId,
-                                    bool aIsResidentCredential,
-                                    const nsACString& aRpId,
-                                    const nsACString& aPrivateKey,
-                                    const nsACString& aUserHandle,
-                                    uint32_t aSignCount) {
+MacOSWebAuthnService::AddCredential(
+    const nsACString& aAuthenticatorId,
+    const nsICredentialParameters& aParameters) {
   MOZ_ASSERT(NS_IsMainThread());
   return NS_ERROR_NOT_IMPLEMENTED;
 }

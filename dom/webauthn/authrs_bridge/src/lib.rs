@@ -47,7 +47,7 @@ use xpcom::interfaces::{
     nsIWebAuthnRegisterPromise, nsIWebAuthnRegisterResult, nsIWebAuthnService, nsIWebAuthnSignArgs,
     nsIWebAuthnSignPromise, nsIWebAuthnSignResult,
 };
-use xpcom::{xpcom_method, RefPtr};
+use xpcom::{xpcom_method, Ensure, RefPtr};
 mod about_webauthn_controller;
 use about_webauthn_controller::*;
 mod test_token;
@@ -1461,37 +1461,49 @@ impl AuthrsService {
     xpcom_method!(
         add_credential => AddCredential(
             authenticatorId: *const nsACString,
-            credentialId: *const nsACString,
-            isResidentCredential: bool,
-            rpId: *const nsACString,
-            privateKey: *const nsACString,
-            userHandle: *const nsACString,
-            signCount: u32)
+            parameters: *const nsICredentialParameters)
     );
     fn add_credential(
         &self,
         authenticator_id: &nsACString,
-        credential_id: &nsACString,
-        is_resident_credential: bool,
-        rp_id: &nsACString,
-        private_key: &nsACString,
-        user_handle: &nsACString,
-        sign_count: u32,
+        parameters: &nsICredentialParameters,
+        // credential_id: &nsACString,
+        // is_resident_credential: bool,
+        // rp_id: &nsACString,
+        // private_key: &nsACString,
+        // sign_count: u32,
+        // user_handle: Option<&nsACString>,
     ) -> Result<(), nsresult> {
+        let mut credential_id = std::ptr::null_mut();
+        unsafe { parameters.GetCredentialId(credential_id) }.to_result()?;
         let credential_id = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .decode(credential_id)
+            .decode(Ensure::ensure(credential_id)?)
             .or(Err(NS_ERROR_INVALID_ARG))?;
+
+        let mut is_resident_credential = std::ptr::null_mut();
+        unsafe { parameters.GetIsResidentCredential(is_resident_credential) }.to_result()?;
+        let is_resident_credential = Ensure::ensure(is_resident_credential)?;
+
+        let mut private_key = std::ptr::null_mut();
+        unsafe { parameters.GetPrivateKey(private_key) }.to_result()?;
         let private_key = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .decode(private_key)
+            .decode(Ensure::ensure(private_key)?)
             .or(Err(NS_ERROR_INVALID_ARG))?;
-        let user_handle = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .decode(user_handle)
-            .or(Err(NS_ERROR_INVALID_ARG))?;
+
+        let user_handle = match user_handle {
+            None => None,
+            Some(user_handle) if user_handle.is_empty() => None,
+            Some(user_handle) => Some(
+                base64::engine::general_purpose::URL_SAFE_NO_PAD
+                    .decode(user_handle)
+                    .or(Err(NS_ERROR_INVALID_ARG))?,
+            ),
+        };
         self.test_token_manager.add_credential(
             &authenticator_id.to_utf8(),
             &credential_id,
             &private_key,
-            &user_handle,
+            user_handle.as_deref(),
             sign_count,
             rp_id.to_string(),
             is_resident_credential,

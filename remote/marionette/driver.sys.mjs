@@ -4038,24 +4038,24 @@ export class GeckoDriver {
    * @param {string} cmd.parameters.credentials.privateKey
    *     An asymmetric key package containing a single private key per RFC5958,
    *     encoded using Base64url Encoding.
-   * @param {string} [cmd.parameters.credentials.userHandle]
-   *     The userHandle associated with the credential, encoded using Base64url
-   *     Encoding.
-   * @param {number} cmd.parameters.credentials.signCount
+   * @param {number?} cmd.parameters.credentials.signCount
    *     The initial value for a signature counter associated with the public
    *     key credential source.
+   * @param {string?} [cmd.parameters.credentials.userHandle]
+   *     The userHandle associated with the credential, encoded using Base64url
+   *     Encoding. This property may not be defined.
    *
    * @see https://www.w3.org/TR/webauthn-3/#sctn-automation-add-credential
    */
   webAuthn_addCredential(cmd) {
     const { authenticatorId, credentials } = cmd.parameters;
-    const {
+    let {
       credentialId,
       isResidentCredential,
       rpId,
       privateKey,
-      userHandle,
       signCount,
+      userHandle,
     } = credentials;
 
     this.#assertVirtualAuthenticator(authenticatorId);
@@ -4080,25 +4080,33 @@ export class GeckoDriver {
       lazy.pprint`Expected "privateKey" to be a string, got ${privateKey}`
     );
 
-    if (userHandle) {
+    if (userHandle === undefined || userHandle === null) {
+      userHandle = undefined;
+    } else {
       lazy.assert.string(
         userHandle,
-        lazy.pprint`Expected "userHandle" to be a string, got ${userHandle}`
+        lazy.pprint`Expected "userHandle" to be a string, null or undefined, got ${userHandle}`
       );
     }
 
-    lazy.assert.number(
-      signCount,
-      lazy.pprint`Expected "signCount" to be a number, got ${signCount}`
-    );
+    if (signCount === undefined || signCount === null) {
+      // "Associate a signature counter counter to the credential with a starting
+      // value equal to the parameters’ signCount or 0 if signCount is null."
+      signCount = 0;
+    } else {
+      lazy.assert.number(
+        signCount,
+        lazy.pprint`Expected "signCount" to be a number, null or undefined, got ${signCount}`
+      );
+    }
 
     lazy.webauthn.addCredential(authenticatorId, {
       credentialId,
       isResidentCredential,
       rpId,
       privateKey,
-      userHandle,
       signCount,
+      userHandle,
     });
   }
 

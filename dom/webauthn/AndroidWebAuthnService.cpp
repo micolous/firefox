@@ -411,13 +411,9 @@ AndroidWebAuthnService::RemoveVirtualAuthenticator(
 }
 
 NS_IMETHODIMP
-AndroidWebAuthnService::AddCredential(const nsACString& aAuthenticatorId,
-                                      const nsACString& aCredentialId,
-                                      bool aIsResidentCredential,
-                                      const nsACString& aRpId,
-                                      const nsACString& aPrivateKey,
-                                      const nsACString& aUserHandle,
-                                      uint32_t aSignCount) {
+AndroidWebAuthnService::AddCredential(
+    const nsACString& aAuthenticatorId,
+    const nsICredentialParameters& aParameters) {
   MOZ_ASSERT(NS_IsMainThread());
   return NS_ERROR_NOT_IMPLEMENTED;
 }

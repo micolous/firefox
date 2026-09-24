@@ -84,10 +84,14 @@ impl TestTokenCredential {
             extensions: Extension::default(),
         };
 
-        let user = Some(PublicKeyCredentialUserEntity {
-            id: self.user_handle.clone(),
-            ..Default::default()
-        });
+        let user = if self.user_handle.is_empty() {
+            None
+        } else {
+            Some(PublicKeyCredentialUserEntity {
+                id: self.user_handle.clone(),
+                ..Default::default()
+            })
+        };
 
         let mut data = auth_data.to_vec();
         data.extend_from_slice(client_data_hash.as_ref());
@@ -157,7 +161,7 @@ impl TestToken {
         privkey: &[u8],
         rp: &RelyingParty,
         is_discoverable_credential: bool,
-        user_handle: &[u8],
+        user_handle: Option<&[u8]>,
         sign_count: u32,
         credential_protection_policy: CredentialProtectionPolicy,
     ) {
@@ -166,7 +170,7 @@ impl TestToken {
             privkey: privkey.to_vec(),
             rp: rp.clone(),
             is_discoverable_credential,
-            user_handle: user_handle.to_vec(),
+            user_handle: user_handle.unwrap_or_default().to_vec(),
             sign_count: AtomicU32::new(sign_count),
             credential_protection_policy,
         };
@@ -652,7 +656,7 @@ impl VirtualFidoDevice for TestToken {
             &private,
             &req.rp,
             req.options.resident_key.unwrap_or(false),
-            &req.user.clone().unwrap_or_default().id,
+            req.user.as_ref().map(|u| u.id.as_slice()),
             counter,
             req.extensions
                 .cred_protect
@@ -845,11 +849,22 @@ impl TestTokenManager {
         authenticator_id: &str,
         id: &[u8],
         privkey: &[u8],
-        user_handle: &[u8],
+        user_handle: Option<&[u8]>,
         sign_count: u32,
         rp_id: String,
         is_resident_credential: bool,
     ) -> Result<(), nsresult> {
+        // Resident keys must have a non-empty user handle:
+        // https://github.com/web-platform-tests/wpt/issues/61546
+        // If user handle is set, it must be no more than 64 bytes:
+        // https://www.w3.org/TR/webauthn-3/#user-handle
+        if (is_resident_credential
+            && (user_handle.is_none() || user_handle.is_some_and(|h| h.is_empty())))
+            || user_handle.is_some_and(|h| h.len() > 64)
+        {
+            return Err(NS_ERROR_INVALID_ARG);
+        }
+
         let mut guard = self.state.lock().map_err(|_| NS_ERROR_FAILURE)?;
         let token = guard
             .deref_mut()

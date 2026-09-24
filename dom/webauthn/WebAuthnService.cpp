@@ -573,17 +573,11 @@ WebAuthnService::RemoveVirtualAuthenticator(
 }
 
 NS_IMETHODIMP
-WebAuthnService::AddCredential(const nsACString& aAuthenticatorId,
-                               const nsACString& aCredentialId,
-                               bool aIsResidentCredential,
-                               const nsACString& aRpId,
-                               const nsACString& aPrivateKey,
-                               const nsACString& aUserHandle,
-                               uint32_t aSignCount) {
+WebAuthnService::AddCredential(
+    const nsACString& aAuthenticatorId,
+    const nsICredentialParameters& aParameters) {
   MOZ_ASSERT(NS_IsMainThread());
-  return AuthrsService()->AddCredential(aAuthenticatorId, aCredentialId,
-                                        aIsResidentCredential, aRpId,
-                                        aPrivateKey, aUserHandle, aSignCount);
+  return AuthrsService()->AddCredential(aAuthenticatorId, aParameters);
 }
 
 NS_IMETHODIMP

@@ -6,13 +6,14 @@
 #include "nsIWebAuthnArgs.idl"
 #include "nsIWebAuthnPromise.idl"
 
-[scriptable, uuid(6c4ecd9f-57c0-4d7d-8080-bf6e4d499f8f)]
+[scriptable, uuid(711cdf6b-1bec-4373-b5c7-b6c225ecbafe)]
 interface nsICredentialParameters : nsISupports
 {
     readonly attribute ACString credentialId;
     readonly attribute boolean isResidentCredential;
     readonly attribute ACString rpId;
     readonly attribute ACString privateKey;
+    // TODO: make userHandle nsIVariant or jsval, `null` is different to `""`.
     readonly attribute ACString userHandle;
     readonly attribute uint32_t signCount;
 };
@@ -32,7 +33,7 @@ interface nsIWebAuthnAutoFillEntry: nsISupports
     readonly attribute Array<uint8_t> credentialId;
 };
 
-[scriptable, uuid(3dde2d1b-bef6-40e1-a781-a058eb50c570)]
+[scriptable, uuid(25224145-6912-48e3-b0cd-906535594122)]
 interface nsIWebAuthnService : nsISupports
 {
     // IsUserVerifyingPlatformAuthenticatorAvailable
@@ -126,12 +127,7 @@ interface nsIWebAuthnService : nsISupports
     // https://w3c.github.io/webauthn/#sctn-automation-add-credential
     void addCredential(
         in ACString authenticatorId,
-        in ACString credentialId,
-        in boolean isResidentCredential,
-        in ACString rpId,
-        in ACString privateKey,
-        in ACString userHandle,
-        in uint32_t signCount);
+        in nsICredentialParameters parameters);
 
     // Gets all credentials that have been added to a virtual authenticator.
     // See https://w3c.github.io/webauthn/#sctn-automation-get-credentials
