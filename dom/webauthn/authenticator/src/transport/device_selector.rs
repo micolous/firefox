@@ -10,6 +10,7 @@ pub use crate::transport::platform::device::Device;
 
 use runloop::RunLoop;
 use std::collections::{HashMap, HashSet};
+use std::convert::TryInto;
 use std::sync::mpsc::{channel, RecvTimeoutError, Sender};
 use std::time::Duration;
 
@@ -24,7 +25,13 @@ pub enum BlinkResult {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeviceCommand {
-    Blink,
+    Blink {
+        /// The number of detected compatible devices
+        device_count: u8,
+
+        /// The number of detected incompatible devices.
+        incompatible_count: u8,
+    },
     Cancel,
     Continue,
     Removed,
@@ -62,6 +69,8 @@ impl DeviceSelector {
             // Device IDs of devices that responded with "ImAToken" mapping to channels that are
             // waiting to receive a DeviceCommand
             let mut tokens = HashMap::new();
+            // Device IDs which are not compatible with the request.
+            let mut non_tokens = HashSet::new();
             while alive() {
                 let d = Duration::from_secs(100);
                 let res = match selector_rec.recv_timeout(d) {
@@ -94,6 +103,7 @@ impl DeviceSelector {
                     }
                     DeviceSelectorEvent::DeviceRemoved(ref id) => {
                         debug!("Device removed event: {:?}", id);
+                        non_tokens.remove(id);
                         if !waiting_for_response.remove(id) {
                             // Note: We _could_ check here if we had multiple tokens and are already blinking
                             //       and the removal of this one leads to only one token left. So we could in theory
@@ -127,9 +137,10 @@ impl DeviceSelector {
                             continue;
                         }
                     }
-                    DeviceSelectorEvent::NotAToken(ref id) => {
-                        debug!("Device not a token event: {:?}", id);
-                        waiting_for_response.remove(id);
+                    DeviceSelectorEvent::NotAToken(id) => {
+                        debug!("Device not a token event: {id:?}");
+                        waiting_for_response.remove(&id);
+                        non_tokens.insert(id);
                         if waiting_for_response.is_empty() && tokens.is_empty() {
                             send_status(&status, StatusUpdate::NoDevicesFound);
                         }
@@ -137,8 +148,18 @@ impl DeviceSelector {
                     DeviceSelectorEvent::ImAToken((id, tx)) => {
                         let _ = waiting_for_response.remove(&id);
                         if blinking {
+                            let device_count =
+                                tokens.len().try_into().unwrap_or(u8::MAX).saturating_add(1);
+                            let incompatible_count = non_tokens.len().try_into().unwrap_or(u8::MAX);
+
                             // We are already blinking, so this new device should blink too.
-                            if tx.send(DeviceCommand::Blink).is_ok() {
+                            if tx
+                                .send(DeviceCommand::Blink {
+                                    device_count,
+                                    incompatible_count,
+                                })
+                                .is_ok()
+                            {
                                 tokens.insert(id, tx.clone());
                             }
                             continue;
@@ -162,10 +183,16 @@ impl DeviceSelector {
                     } else {
                         blinking = true;
 
+                        let device_count = tokens.len().try_into().unwrap_or(u8::MAX);
+                        let incompatible_count = non_tokens.len().try_into().unwrap_or(u8::MAX);
+
                         tokens.iter().for_each(|(_dev, tx)| {
                             // A send operation can only fail if the receiving end of a channel is disconnected, implying that the data could never be received.
                             // We ignore errors here for now, but should probably remove the device in such a case (even though it theoretically can't happen)
-                            let _ = tx.send(DeviceCommand::Blink);
+                            let _ = tx.send(DeviceCommand::Blink {
+                                device_count,
+                                incompatible_count,
+                            });
                         });
                     }
                 }

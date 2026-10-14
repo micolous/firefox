@@ -120,7 +120,13 @@ pub enum StatusUpdate {
     /// error occurred. The Sender is for sending back a PIN (if needed).
     PinUvError(StatusPinUv),
     /// Sent, if multiple devices are found and the user has to select one
-    SelectDeviceNotice,
+    SelectDeviceNotice {
+        /// The number of detected compatible devices
+        device_count: u8,
+
+        /// The number of detected incompatible devices.
+        incompatible_count: u8,
+    },
     /// Sent when a token was selected for interactive management
     InteractiveManagement(InteractiveUpdate),
     /// Sent when a token returns multiple results for a getAssertion request

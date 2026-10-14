@@ -74,11 +74,20 @@ impl StateMachine {
 
         // Blocking recv. DeviceSelector will tell us what to do
         match rx.recv() {
-            Ok(DeviceCommand::Blink) => {
+            Ok(DeviceCommand::Blink {
+                device_count,
+                incompatible_count,
+            }) => {
                 // The caller wants the user to choose a device. Send a status update and blink
                 // this device. NOTE: We send one status update per device, so the recipient should be
                 // prepared to receive the message multiple times.
-                send_status(status, crate::StatusUpdate::SelectDeviceNotice);
+                send_status(
+                    status,
+                    crate::StatusUpdate::SelectDeviceNotice {
+                        device_count,
+                        incompatible_count,
+                    },
+                );
                 match dev.block_and_blink(&keep_blinking) {
                     BlinkResult::DeviceSelected => {
                         // User selected us. Let DeviceSelector know, so it can cancel all other
@@ -169,7 +178,12 @@ impl StateMachine {
                     return;
                 }
 
-                info!("Device {:?} continues with the register process", dev.id());
+                info!(
+                    "Device {:?} continues with the register process, protocol = {:?}, fallback = {:?}",
+                    dev.id(),
+                    dev.get_protocol(),
+                    args.use_ctap1_fallback
+                );
                 if ctap2::register(&mut dev, args.clone(), status, callback.clone(), alive) {
                     // ctap2::register returns true if it called the callback with Ok(..).  Cancel
                     // all other tokens in case we skipped the "blinking"-action and went straight
@@ -240,7 +254,12 @@ impl StateMachine {
                     return;
                 }
 
-                info!("Device {:?} continues with the signing process", dev.id());
+                info!(
+                    "Device {:?} continues with the signing process, protocol = {:?}, fallback = {:?}",
+                    dev.id(),
+                    dev.get_protocol(),
+                    args.use_ctap1_fallback
+                );
                 if ctap2::sign(&mut dev, args.clone(), status, callback.clone(), alive) {
                     // ctap2::sign returns true if it called the callback with Ok(..).  Cancel all
                     // other tokens in case we skipped the "blinking"-action and went straight for

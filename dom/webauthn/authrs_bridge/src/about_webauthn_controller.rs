@@ -99,9 +99,18 @@ pub(crate) fn interactive_status_callback(
                 send_about_prompt(&prompt)?;
                 continue;
             }
-            Ok(StatusUpdate::SelectDeviceNotice) => {
-                info!("STATUS: Please select a device by touching one of them.");
-                let prompt = BrowserPromptType::SelectDevice;
+            Ok(StatusUpdate::SelectDeviceNotice {
+                device_count,
+                incompatible_count,
+            }) => {
+                info!(
+                    "STATUS: Select one of {device_count} device(s) to use by touching it. \
+                    Ignoring {incompatible_count} incompatible device(s)."
+                );
+                let prompt = BrowserPromptType::SelectDevice {
+                    device_count,
+                    incompatible_count,
+                };
                 send_about_prompt(&prompt)?;
             }
             Ok(StatusUpdate::PinUvError(e)) => {

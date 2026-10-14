@@ -79,7 +79,13 @@ enum BrowserPromptType<'a> {
     PinAuthBlocked,
     PinNotSet,
     Presence,
-    SelectDevice,
+    SelectDevice {
+        /// The number of detected compatible devices
+        device_count: u8,
+
+        /// The number of detected incompatible devices.
+        incompatible_count: u8,
+    },
     UvBlocked,
     PinRequired,
     SelectedDevice {
@@ -499,10 +505,19 @@ fn status_callback(
     let browsing_context_id = Some(browsing_context_id);
     loop {
         match status_rx.recv() {
-            Ok(StatusUpdate::SelectDeviceNotice) => {
-                debug!("STATUS: Please select a device by touching one of them.");
+            Ok(StatusUpdate::SelectDeviceNotice {
+                device_count,
+                incompatible_count,
+            }) => {
+                debug!(
+                    "STATUS: Select one of {device_count} device(s) to use by touching it. \
+                    Ignoring {incompatible_count} incompatible device(s)."
+                );
                 send_prompt(
-                    BrowserPromptType::SelectDevice,
+                    BrowserPromptType::SelectDevice {
+                        device_count,
+                        incompatible_count,
+                    },
                     tid,
                     origin,
                     browsing_context_id,
