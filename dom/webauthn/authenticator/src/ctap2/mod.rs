@@ -535,6 +535,7 @@ pub fn register<Dev: FidoDevice>(
                     &makecred.exclude_list,
                     &makecred.rp,
                     pin_uv_auth_result.get_pin_uv_auth_token(),
+                    &status,
                 ),
                 callback
             );
@@ -544,6 +545,7 @@ pub fn register<Dev: FidoDevice>(
                 &makecred.exclude_list,
                 &makecred.rp,
                 &makecred.client_data_hash,
+                &status,
             );
             // That handle was already registered with the token
             if key_handle.is_some() {
@@ -552,7 +554,7 @@ pub fn register<Dev: FidoDevice>(
                 // making the token blink upon device selection.
                 send_status(&status, crate::StatusUpdate::PresenceRequired);
                 let msg = dummy_make_credentials_cmd();
-                let _ = dev.send_msg_cancellable(&msg, alive); // Ignore answer, return "CredentialExcluded"
+                let _ = dev.send_msg_cancellable(&msg, alive, Some(&status)); // Ignore answer, return "CredentialExcluded"
                 callback.call(Err(AuthenticatorError::CredentialExcluded));
                 return false;
             }
@@ -562,7 +564,7 @@ pub fn register<Dev: FidoDevice>(
         debug!("{makecred:?} using {pin_uv_auth_result:?}");
         debug!("------------------------------------------------------------------");
         send_status(&status, crate::StatusUpdate::PresenceRequired);
-        let resp = dev.send_msg_cancellable(&makecred, alive);
+        let resp = dev.send_msg_cancellable(&makecred, alive, Some(&status));
         match resp {
             Ok(result) => {
                 if has_large_blob && result.large_blob_key.is_some() {
@@ -625,8 +627,13 @@ pub fn sign<Dev: FidoDevice>(
             // Try to silently discover U2F credentials that require the FIDO App ID extension. If
             // any are found, we should use the alternate RP ID instead of the provided RP ID.
             let alt_rp_id = RelyingParty::from(app_id);
-            let silent_creds =
-                silently_discover_credentials(dev, &allow_list, &alt_rp_id, &client_data_hash);
+            let silent_creds = silently_discover_credentials(
+                dev,
+                &allow_list,
+                &alt_rp_id,
+                &client_data_hash,
+                &status,
+            );
             if !silent_creds.is_empty() {
                 allow_list = silent_creds;
                 rp_id = alt_rp_id;
@@ -672,6 +679,7 @@ pub fn sign<Dev: FidoDevice>(
                     &get_assertion.allow_list,
                     &get_assertion.rp,
                     pin_uv_auth_result.get_pin_uv_auth_token(),
+                    &status,
                 ),
                 callback
             );
@@ -681,6 +689,7 @@ pub fn sign<Dev: FidoDevice>(
                 &get_assertion.allow_list,
                 &get_assertion.rp,
                 &get_assertion.client_data_hash,
+                &status,
             );
             match key_handle {
                 Some(key_handle) => {
@@ -697,7 +706,7 @@ pub fn sign<Dev: FidoDevice>(
             // We have to collect a user interaction
             send_status(&status, crate::StatusUpdate::PresenceRequired);
             let msg = dummy_make_credentials_cmd();
-            let _ = dev.send_msg_cancellable(&msg, alive); // Ignore answer, return "NoCredentials"
+            let _ = dev.send_msg_cancellable(&msg, alive, Some(&status)); // Ignore answer, return "NoCredentials"
             callback.call(Err(HIDError::Command(CommandError::StatusCode(
                 StatusCode::NoCredentials,
                 None,
@@ -721,7 +730,7 @@ pub fn sign<Dev: FidoDevice>(
         debug!("{get_assertion:?} using {pin_uv_auth_result:?}");
         debug!("------------------------------------------------------------------");
         send_status(&status, crate::StatusUpdate::PresenceRequired);
-        let mut results = match dev.send_msg_cancellable(&get_assertion, alive) {
+        let mut results = match dev.send_msg_cancellable(&get_assertion, alive, Some(&status)) {
             Ok(results) => results,
             Err(e) => {
                 handle_errors!(e, status, callback, pin_uv_auth_result, skip_uv);
@@ -787,7 +796,7 @@ pub(crate) fn reset_helper<T: From<ResetResult>>(
     debug!("{:?}", reset);
     debug!("------------------------------------------------------------------");
     send_status(&status, crate::StatusUpdate::PresenceRequired);
-    let resp = dev.send_cbor_cancellable(&reset, keep_alive);
+    let resp = dev.send_cbor_cancellable(&reset, keep_alive, Some(&status));
     if resp.is_ok() {
         // The DeviceSelector could already be dead, but it might also wait
         // for us to respond, in order to cancel all other tokens in case
@@ -807,8 +816,8 @@ pub(crate) fn reset_helper<T: From<ResetResult>>(
     }
 }
 
-pub(crate) fn set_or_change_pin_helper<T: From<()>>(
-    dev: &mut Device,
+pub fn set_or_change_pin_helper<T: From<()>, Dev: FidoDevice>(
+    dev: &mut Dev,
     mut current_pin: Option<Pin>,
     new_pin: Pin,
     status: Sender<crate::StatusUpdate>,
@@ -868,7 +877,7 @@ pub(crate) fn set_or_change_pin_helper<T: From<()>>(
 
             res = ChangeExistingPin::new(&authinfo, &shared_secret, &curr_pin, &new_pin)
                 .map_err(HIDError::Command)
-                .and_then(|msg| dev.send_cbor_cancellable(&msg, alive))
+                .and_then(|msg| dev.send_cbor_cancellable(&msg, alive, Some(&status)))
                 .map_err(|e| repackage_pin_errors(dev, e));
 
             if let Err(AuthenticatorError::PinError(PinError::InvalidPin(r))) = res {
@@ -892,8 +901,12 @@ pub(crate) fn set_or_change_pin_helper<T: From<()>>(
         }
         res
     } else {
-        dev.send_cbor_cancellable(&SetNewPin::new(&shared_secret, &new_pin), alive)
-            .map_err(AuthenticatorError::HIDError)
+        dev.send_cbor_cancellable(
+            &SetNewPin::new(&shared_secret, &new_pin),
+            alive,
+            Some(&status),
+        )
+        .map_err(AuthenticatorError::HIDError)
     };
     // the callback is expecting `Result<(), AuthenticatorError>`, but `ChangeExistingPin`
     // and `SetNewPin` return the default `ClientPinResponse` on success. Just discard it.
@@ -998,7 +1011,7 @@ pub(crate) fn bio_enrollment(
         debug!("{bio_cmd:?} using {pin_uv_auth_result:?}");
         debug!("------------------------------------------------------------------");
 
-        let resp = dev.send_cbor_cancellable(&bio_cmd, alive);
+        let resp = dev.send_cbor_cancellable(&bio_cmd, alive, Some(&status));
         match resp {
             Ok(result) => {
                 skip_puap = true;
@@ -1168,8 +1181,8 @@ pub(crate) fn bio_enrollment(
     false
 }
 
-pub(crate) fn credential_management(
-    dev: &mut Device,
+pub fn credential_management<Dev: FidoDevice>(
+    dev: &mut Dev,
     puat_result: Option<PinUvAuthResult>,
     command: CredManagementCmd,
     status: Sender<crate::StatusUpdate>,
@@ -1268,7 +1281,7 @@ pub(crate) fn credential_management(
         debug!("{cred_management:?} using {pin_uv_auth_result:?}");
         debug!("------------------------------------------------------------------");
 
-        let resp = dev.send_cbor_cancellable(&cred_management, alive);
+        let resp = dev.send_cbor_cancellable(&cred_management, alive, Some(&status));
         match resp {
             Ok(result) => {
                 skip_puap = true;
@@ -1552,7 +1565,7 @@ pub(crate) fn configure_authenticator(
         debug!("{authcfg:?} using {pin_uv_auth_result:?}");
         debug!("------------------------------------------------------------------");
 
-        let resp = dev.send_cbor_cancellable(&authcfg, alive);
+        let resp = dev.send_cbor_cancellable(&authcfg, alive, Some(&status));
         match resp {
             Ok(()) => {
                 let auth_info = unwrap_option!(dev.refresh_authenticator_info(), callback);

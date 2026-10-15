@@ -13,6 +13,7 @@ use authenticator::ctap2::{
     client_data::ClientDataHash,
     commands::{
         client_pin::{ClientPIN, ClientPinResponse, PINSubcommand},
+        credential_management::{CredentialManagement, CredentialManagementResponse},
         get_assertion::{
             GetAssertion, GetAssertionResponse, GetAssertionResult, HmacGetSecretOrPrf,
             HmacSecretExtension,
@@ -260,14 +261,15 @@ impl FidoDeviceIO for TestToken {
         &mut self,
         msg: &Req,
         keep_alive: &dyn Fn() -> bool,
+        status: Option<&Sender<StatusUpdate>>,
     ) -> Result<Out, HIDError> {
         if !self.initialized() {
             return Err(HIDError::DeviceNotInitialized);
         }
 
         match self.get_protocol() {
-            FidoProtocol::CTAP1 => self.send_ctap1_cancellable(msg, keep_alive),
-            FidoProtocol::CTAP2 => self.send_cbor_cancellable(msg, keep_alive),
+            FidoProtocol::CTAP1 => self.send_ctap1_cancellable(msg, keep_alive, status),
+            FidoProtocol::CTAP2 => self.send_cbor_cancellable(msg, keep_alive, status),
         }
     }
 
@@ -275,6 +277,7 @@ impl FidoDeviceIO for TestToken {
         &mut self,
         msg: &Req,
         _keep_alive: &dyn Fn() -> bool,
+        _status: Option<&Sender<StatusUpdate>>,
     ) -> Result<Req::Output, HIDError> {
         msg.send_to_virtual_device(self)
     }
@@ -283,6 +286,7 @@ impl FidoDeviceIO for TestToken {
         &mut self,
         msg: &Req,
         _keep_alive: &dyn Fn() -> bool,
+        _status: Option<&Sender<StatusUpdate>>,
     ) -> Result<Req::Output, HIDError> {
         msg.send_to_virtual_device(self)
     }
@@ -704,6 +708,14 @@ impl VirtualFidoDevice for TestToken {
     }
 
     fn selection(&self, _req: &Selection) -> Result<(), HIDError> {
+        Err(HIDError::UnsupportedCommand)
+    }
+
+    fn manage_credentials(
+        &mut self,
+        _req: &CredentialManagement,
+    ) -> Result<CredentialManagementResponse, HIDError> {
+        // TODO: https://bugzilla.mozilla.org/show_bug.cgi?id=1867285
         Err(HIDError::UnsupportedCommand)
     }
 }
