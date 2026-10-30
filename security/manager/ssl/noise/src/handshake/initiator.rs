@@ -11,6 +11,8 @@ use crate::{
 };
 #[cfg(feature = "xpcom")]
 use nserror::{nsresult, NS_OK};
+#[cfg(feature = "xpcom")]
+use nsstring::{nsACString, nsCString};
 use nss_rs::{
     aead::Mode,
     ec::{ecdh, ecdh_keygen, import_ec_public_key_from_spki, EcCurve, EcdhKeypair},
@@ -20,8 +22,6 @@ use sha2::{digest, Sha256};
 use std::ops::{Deref, DerefMut};
 #[cfg(feature = "xpcom")]
 use std::sync::{Mutex, MutexGuard};
-#[cfg(feature = "xpcom")]
-use thin_vec::ThinVec;
 #[cfg(feature = "xpcom")]
 use xpcom::{interfaces::nsICtapCableInitiator, RefPtr};
 
@@ -218,10 +218,10 @@ xpcchannel_impl!(Initiator, CtapCableInitiator);
 
 #[cfg(feature = "xpcom")]
 impl CtapCableInitiator {
-    xpcom_method!(get_handshake_hash => GetHandshakeHash() -> ThinVec<u8>);
-    fn get_handshake_hash(&self) -> Result<ThinVec<u8>> {
+    xpcom_method!(get_handshake_hash => GetHandshakeHash() -> nsACString);
+    fn get_handshake_hash(&self) -> Result<nsCString> {
         let guard = self.get_self()?;
-        Ok(ThinVec::from(guard.handshake_hash.as_slice()))
+        Ok(nsCString::from(guard.handshake_hash.as_slice()))
     }
 }
 
@@ -246,20 +246,20 @@ impl CtapCableInitiatorHandshake {
         Ok(guard.is_none())
     }
 
-    xpcom_method!(get_initial_message => GetInitialMessage() -> ThinVec<u8>);
-    fn get_initial_message(&self) -> Result<ThinVec<u8>> {
+    xpcom_method!(get_initial_message => GetInitialMessage() -> nsACString);
+    fn get_initial_message(&self) -> Result<nsCString> {
         let guard = self.get_self()?;
         guard
             .as_ref()
-            .map(|h| ThinVec::from(h.initial_message().as_slice()))
+            .map(|h| nsCString::from(h.initial_message().as_slice()))
             .ok_or(Error::InvalidState)
     }
 
     xpcom_method!(process_handshake_response => ProcessHandshakeResponse(
-        aResponseMessage: *const ThinVec<u8>) -> *const nsICtapCableInitiator);
+        aResponseMessage: *const nsACString) -> *const nsICtapCableInitiator);
     fn process_handshake_response(
         &self,
-        response_message: &ThinVec<u8>,
+        response_message: &nsACString,
     ) -> Result<RefPtr<nsICtapCableInitiator>> {
         let mut guard = self.get_self()?;
         let guard = guard.take().ok_or(Error::InvalidState)?;

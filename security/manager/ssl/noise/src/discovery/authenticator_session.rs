@@ -15,9 +15,9 @@ use crate::{
 use crate::{handshake::CtapCableResponder, xpcparams_impl};
 #[cfg(feature = "xpcom")]
 use nserror::{nsresult, NS_OK};
-use nss_rs::{ec::EcdhPublicKey, p11, IntoResult as _, SECItem, SECItemBorrowed};
 #[cfg(feature = "xpcom")]
 use nsstring::nsACString;
+use nss_rs::{ec::EcdhPublicKey, p11, IntoResult as _, SECItem, SECItemBorrowed};
 use pkcs11_bindings::CKM_AES_CBC;
 use serde_cbor_2::{from_slice, Value};
 use sha2::Sha256;
@@ -273,8 +273,8 @@ impl CtapCableAuthenticatorDiscoverySession {
         Ok(ThinVec::from(encrypted_eid))
     }
 
-    xpcom_method!(handshake => Handshake(aInitialMessage: *const ThinVec<u8>) -> *const nsICtapCableResponder);
-    fn handshake(&self, initial_message: &ThinVec<u8>) -> Result<RefPtr<nsICtapCableResponder>> {
+    xpcom_method!(handshake => Handshake(aInitialMessage: *const nsACString) -> *const nsICtapCableResponder);
+    fn handshake(&self, initial_message: &nsACString) -> Result<RefPtr<nsICtapCableResponder>> {
         let guard = self.get_self()?;
         let responder = guard.as_responder(initial_message)?;
         let responder: RefPtr<CtapCableResponder> = responder.into();

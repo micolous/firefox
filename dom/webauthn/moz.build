@@ -6,6 +6,7 @@ with Files("**"):
     BUG_COMPONENT = ("Core", "DOM: Web Authentication")
 
 MOZ_SRC_FILES += [
+    "CtapCableWebSocket.sys.mjs",
     "WebAuthnRelatedOriginFetcher.sys.mjs",
 ]
 
@@ -16,6 +17,7 @@ XPCOM_MANIFESTS += [
 ]
 
 XPIDL_SOURCES += [
+    "nsICtapCableWebSocket.idl",
     "nsIWebAuthnArgs.idl",
     "nsIWebAuthnAttObj.idl",
     "nsIWebAuthnPromise.idl",

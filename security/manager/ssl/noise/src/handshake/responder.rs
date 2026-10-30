@@ -11,6 +11,8 @@ use crate::{
 };
 #[cfg(feature = "xpcom")]
 use nserror::{nsresult, NS_OK};
+#[cfg(feature = "xpcom")]
+use nsstring::{nsACString, nsCString};
 use nss_rs::{
     aead::Mode,
     ec::{ecdh, ecdh_keygen, import_ec_public_key_from_spki, EcCurve, EcdhKeypair},
@@ -20,8 +22,6 @@ use sha2::{digest, Sha256};
 use std::ops::{Deref, DerefMut};
 #[cfg(feature = "xpcom")]
 use std::sync::Mutex;
-#[cfg(feature = "xpcom")]
-use thin_vec::ThinVec;
 #[cfg(feature = "xpcom")]
 use xpcom::RefPtr;
 
@@ -197,15 +197,15 @@ xpcchannel_impl!(Responder, CtapCableResponder);
 
 #[cfg(feature = "xpcom")]
 impl CtapCableResponder {
-    xpcom_method!(get_handshake_hash => GetHandshakeHash() -> ThinVec<u8>);
-    fn get_handshake_hash(&self) -> Result<ThinVec<u8>> {
+    xpcom_method!(get_handshake_hash => GetHandshakeHash() -> nsACString);
+    fn get_handshake_hash(&self) -> Result<nsCString> {
         let guard: std::sync::MutexGuard<'_, Responder> = self.get_self()?;
-        Ok(ThinVec::from(guard.handshake_hash.as_slice()))
+        Ok(nsCString::from(guard.handshake_hash.as_slice()))
     }
 
-    xpcom_method!(get_response_message => GetResponseMessage() -> ThinVec<u8>);
-    fn get_response_message(&self) -> Result<ThinVec<u8>> {
+    xpcom_method!(get_response_message => GetResponseMessage() -> nsACString);
+    fn get_response_message(&self) -> Result<nsCString> {
         let guard = self.get_self()?;
-        Ok(ThinVec::from(guard.response_message.as_slice()))
+        Ok(nsCString::from(guard.response_message.as_slice()))
     }
 }

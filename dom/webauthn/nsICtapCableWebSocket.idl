@@ -1,0 +1,74 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#include "nsISupports.idl"
+#include "nsICtapCableHandshake.idl"
+#include "nsIURI.idl"
+
+[scriptable, uuid(11d53242-0598-4296-b6b2-430a1e6e94f0)]
+interface nsICtapCableWebSocketChannel : nsISupports {
+    /**
+     * Send a message through the caBLE channel.
+     *
+     * @param aMessage Raw message to be sent through the channel. It must be
+     *                 preceeded with a message type byte.
+     *
+     * https://fidoalliance.org/specs/fido-v2.3-ps-20260226/fido-client-to-authenticator-protocol-v2.3-ps-20260226.html#hybrid-data-transfer
+     */
+    void write(in ACString aMessage);
+
+    /**
+     * Send a shutdown message and close the channel.
+     */
+    void close();
+};
+
+
+[scriptable, uuid(45deef90-0297-446b-ba8c-0e2970674d20)]
+interface nsICtapCableWebSocketCallback : nsISupports {
+    const unsigned long STATUS_UNKNOWN = 0;
+    const unsigned long STATUS_CONNECTING_TO_TUNNEL_SERVER = 1;
+    const unsigned long STATUS_HANDSHAKING = 2;
+
+    /**
+     * Called to notify of an update to connection status.
+     */
+    void statusUpdate(in unsigned long aStatus);
+
+    /**
+     * Called to notify of connection failure.
+     */
+    void reject(in nsresult error);
+
+    /**
+     * Called when the WebSocket is connected and the handshake has completed.
+     */
+    void handshakeComplete(
+        in ACString aPostHandshakeMessage,
+        in ACString aHandshakeHash,
+        in nsICtapCableWebSocketChannel aChannel
+    );
+
+    /**
+     * Called when there is a message available in the channel.
+     */
+    void cableMessage(in ACString aMessage);
+};
+
+[scriptable, uuid(2b37e8c0-0107-4eb2-a147-83e9f847eb07)]
+interface nsICtapCableWebSocket : nsISupports {
+    /**
+     * Connect to an authenticator over caBLE as an initiator.
+     */
+    void connectToAuthenticator(
+        in nsICtapCableInitiatorHandshake aHandshake,
+        in ACString aWebSocketUri,
+        in nsICtapCableWebSocketCallback aCallback
+    );
+
+    /**
+     * Cancels any pending caBLE WebSocket connection attempt.
+     */
+    void cancel();
+};

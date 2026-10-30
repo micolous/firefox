@@ -15,7 +15,7 @@ interface nsICtapCableInitiatorHandshake : nsISupports
     /**
      * Initial message to send to the responder to complete the handshake.
      */
-    readonly attribute Array<octet> initialMessage;
+    readonly attribute ACString initialMessage;
 
     /**
      * `true` if the handshake state has been "consumed", and so any
@@ -36,7 +36,7 @@ interface nsICtapCableInitiatorHandshake : nsISupports
      *          after the handshake has completed, and handshake hash
      */
     nsICtapCableInitiator processHandshakeResponse(
-        in Array<octet> aResponseMessage
+        in ACString aResponseMessage
     );
 };
 
@@ -80,6 +80,6 @@ interface nsICtapCableHandshakeService : nsISupports
     nsICtapCableResponder newQrInitiatedResponder(
         in Array<octet> aPsk,
         in Array<octet> aPeerPubKey,
-        in Array<octet> aInitialMessage
+        in ACString aInitialMessage
     );
 };

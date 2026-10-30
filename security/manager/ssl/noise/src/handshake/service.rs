@@ -10,6 +10,7 @@ use crate::{
     Error, InitiatorHandshake, Responder, Result,
 };
 use nserror::{nsresult, NS_OK};
+use nsstring::nsACString;
 use nss_rs::ec::{import_ec_private_key_pkcs8, import_ec_public_key_from_spki};
 use thin_vec::ThinVec;
 use xpcom::{
@@ -54,13 +55,13 @@ impl CtapCableHandshakeService {
     xpcom_method!(new_qr_initiated_responder => NewQrInitiatedResponder(
         aPsk: *const ThinVec<u8>,
         aPeerPubKey: *const ThinVec<u8>,
-        aInitialMessage: *const ThinVec<u8>
+        aInitialMessage: *const nsACString
     ) -> *const nsICtapCableResponder);
     fn new_qr_initiated_responder(
         &self,
         psk: &ThinVec<u8>,
         peer_pub_key: &ThinVec<u8>,
-        initial_message: &ThinVec<u8>,
+        initial_message: &nsACString,
     ) -> Result<RefPtr<nsICtapCableResponder>> {
         let psk = psk
             .as_slice()

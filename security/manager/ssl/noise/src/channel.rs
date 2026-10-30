@@ -10,6 +10,8 @@ use crate::{
 };
 #[cfg(feature = "xpcom")]
 use nserror::{nsresult, NS_OK};
+#[cfg(feature = "xpcom")]
+use nsstring::{nsACString, nsCString};
 use nss_rs::{
     aead::{Aead, SequenceNumber, NONCE_LEN},
     Mode, SymKey,
@@ -185,18 +187,18 @@ macro_rules! xpcchannel_impl {
                 Ok(())
             }
 
-            xpcom_method!(encrypt => Encrypt(aPlainText: *const thin_vec::ThinVec<u8>) -> thin_vec::ThinVec<u8>);
-            fn encrypt(&self, plaintext: &thin_vec::ThinVec<u8>) -> crate::Result<thin_vec::ThinVec<u8>> {
+            xpcom_method!(encrypt => Encrypt(aPlainText: *const nsACString) -> nsACString);
+            fn encrypt(&self, plaintext: &nsACString) -> crate::Result<nsCString> {
                 let mut guard = self.get_self()?;
                 let ct = guard.encrypt(plaintext)?;
-                Ok(thin_vec::ThinVec::from(ct))
+                Ok(nsCString::from(ct))
             }
 
-            xpcom_method!(decrypt => Decrypt(aCipherText: *const thin_vec::ThinVec<u8>) -> thin_vec::ThinVec<u8>);
-            fn decrypt(&self, ciphertext: &thin_vec::ThinVec<u8>) -> crate::Result<thin_vec::ThinVec<u8>> {
+            xpcom_method!(decrypt => Decrypt(aCipherText: *const nsACString) -> nsACString);
+            fn decrypt(&self, ciphertext: &nsACString) -> crate::Result<nsCString> {
                 let mut guard = self.get_self()?;
                 let ct = guard.decrypt(ciphertext)?;
-                Ok(thin_vec::ThinVec::from(ct))
+                Ok(nsCString::from(ct))
             }
         }
     };
