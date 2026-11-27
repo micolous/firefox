@@ -6,6 +6,8 @@ with Files("**"):
     BUG_COMPONENT = ("Core", "DOM: Web Authentication")
 
 MOZ_SRC_FILES += [
+    "CtapCableWebSocket.sys.mjs",
+    "WebAuthnHybridHelper.sys.mjs",
     "WebAuthnRelatedOriginFetcher.sys.mjs",
 ]
 
@@ -16,6 +18,10 @@ XPCOM_MANIFESTS += [
 ]
 
 XPIDL_SOURCES += [
+    "nsICtapBleCentral.idl",
+    "nsICtapBleCentralEventCallback.idl",
+    "nsICtapBleManager.idl",
+    "nsICtapCableWebSocket.idl",
     "nsIWebAuthnArgs.idl",
     "nsIWebAuthnAttObj.idl",
     "nsIWebAuthnPromise.idl",
@@ -30,6 +36,7 @@ EXPORTS.mozilla.dom += [
     "AuthenticatorAssertionResponse.h",
     "AuthenticatorAttestationResponse.h",
     "AuthenticatorResponse.h",
+    "ctap_ble/ctap_ble_manager.h",
     "PublicKeyCredential.h",
     "WebAuthnArgs.h",
     "WebAuthnEnumStrings.h",

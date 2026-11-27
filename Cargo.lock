@@ -426,6 +426,7 @@ dependencies = [
  "cstr",
  "log",
  "moz_task",
+ "noise",
  "nserror",
  "nsstring",
  "rand",
@@ -1555,6 +1556,20 @@ checksum = "8aa998c33a6d3271e3678950a22134cd7dd27cef86dee1b611b5b14207d1d90b"
 dependencies = [
  "proc-macro2",
  "quote",
+]
+
+[[package]]
+name = "ctap_ble"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "log",
+ "moz_task",
+ "nserror",
+ "nsstring",
+ "thin-vec",
+ "thiserror 2.0.12",
+ "xpcom",
 ]
 
 [[package]]
@@ -3013,6 +3028,7 @@ dependencies = [
  "cose-c",
  "crash_helper_client",
  "crypto_hash",
+ "ctap_ble",
  "cubeb-coreaudio",
  "cubeb-pulse",
  "cubeb-sys",

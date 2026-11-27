@@ -140,7 +140,7 @@ interface nsICtapCableInitiatorDiscoverySession : nsICtapCableDiscoveryParams
 /**
  * An in-progress caBLE/Hybrid CTAP discovery session, as the authenticator.
  */
-[scriptable, uuid(9452c811-abb3-44b6-99fa-d060462e7c21)]
+[scriptable, uuid(237410e2-0f7c-4aeb-8904-0c6e0e36bd7a)]
 interface nsICtapCableAuthenticatorDiscoverySession : nsICtapCableDiscoveryParams
 {
     /**
@@ -171,7 +171,7 @@ interface nsICtapCableAuthenticatorDiscoverySession : nsICtapCableDiscoveryParam
      *          response message to sent to the initiator
      */
     nsICtapCableResponder handshake(
-        in Array<octet> aInitialMessage
+        in ACString aInitialMessage
     );
 };
 

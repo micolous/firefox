@@ -18,6 +18,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
   PluginManager: "resource:///actors/PluginParent.sys.mjs",
   SerialDeviceSharingHelper:
     "moz-src:///browser/modules/SerialDeviceSharingHelper.sys.mjs",
+  WebAuthnHybridHelper:
+    "moz-src:///dom/webauthn/WebAuthnHybridHelper.sys.mjs",
   WebAuthnPromptHelper:
     "moz-src:///toolkit/modules/WebAuthnPromptHelper.sys.mjs",
 });
@@ -35,6 +37,7 @@ let gObservers = {
 
   "serial-device-state-changed": ["SerialDeviceSharingHelper"],
 
+  "webauthn-hybrid": ["WebAuthnHybridHelper"],
   "webauthn-prompt": ["WebAuthnPromptHelper"],
 };
 

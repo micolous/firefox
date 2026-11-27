@@ -127,6 +127,9 @@ with Files("SubDialog.sys.mjs"):
 with Files("UpdateUtils.sys.mjs"):
     BUG_COMPONENT = ("Toolkit", "Application Update")
 
+with Files("WebAuthn*.sys.mjs"):
+    BUG_COMPONENT = ("Core", "DOM: Web Authentication")
+
 with Files("WindowsRegistry.sys.mjs"):
     BUG_COMPONENT = ("Toolkit", "General")
 

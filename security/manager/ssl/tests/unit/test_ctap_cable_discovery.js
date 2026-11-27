@@ -159,11 +159,10 @@ add_task(async function test_cable_discovery() {
 
   // responder -> initiator
   let msg = "Hi initiator!";
-  let msgBytes = stringToArray(msg);
-  let ct = responder.encrypt(msgBytes);
-  notDeepEqual(msgBytes, ct, "encrypted value should differ from plaintext");
+  let ct = responder.encrypt(msg);
+  notDeepEqual(msg, ct, "encrypted value should differ from plaintext");
 
-  let pt = arrayToString(initiator.decrypt(ct));
+  let pt = initiator.decrypt(ct);
   equal(msg, pt, "initiator should be able to decrypt responder's message");
 
   throws(
@@ -174,11 +173,10 @@ add_task(async function test_cable_discovery() {
 
   // initiator -> responder
   msg = "G'day, responder!";
-  msgBytes = stringToArray(msg);
-  ct = initiator.encrypt(msgBytes);
-  notDeepEqual(msgBytes, ct, "encrypted value should differ from plaintext");
+  ct = initiator.encrypt(msg);
+  notDeepEqual(msg, ct, "encrypted value should differ from plaintext");
 
-  pt = arrayToString(responder.decrypt(ct));
+  pt = responder.decrypt(ct);
   equal(msg, pt, "responder should be able to decrypt initiator's message");
 });
 

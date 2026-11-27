@@ -30,6 +30,9 @@ pub use crate::{
     symmetric_state::SymmetricState,
 };
 
+#[cfg(feature = "xpcom")]
+pub use crate::handshake::{CtapCableInitiatorHandshake, CtapCableResponder};
+
 pub type Result<T = ()> = std::result::Result<T, Error>;
 pub const ALG: AeadAlgorithms = AeadAlgorithms::Aes256Gcm;
 pub const KEY_LENGTH: usize = ALG.key_len() as usize;

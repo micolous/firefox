@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+use std::fmt;
 use crate::interfaces::{nsIInterfaceRequestor, nsISupports};
 use crate::{GetterAddrefs, RefCounted, RefPtr};
 
@@ -14,6 +15,36 @@ pub struct nsID(pub u32, pub u16, pub u16, pub [u8; 8]);
 pub type nsIID = nsID;
 /// Class IDs
 pub type nsCID = nsID;
+
+impl fmt::Debug for nsID {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fmt::LowerHex::fmt(self, f)
+    }
+}
+
+impl fmt::Display for nsID {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::LowerHex::fmt(self, f)
+    }
+}
+
+impl fmt::LowerHex for nsID {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{:08x}-{:04x}-{:04x}-{:02x}{:02x}-",
+            self.0,
+            self.1,
+            self.2,
+            self.3[0],
+            self.3[1],
+        )?;
+        for &b in &self.3[2..] {
+            write!(f, "{b:02x}")?;
+        }
+        Ok(())
+    }
+}
 
 /// A type which implements XpCom must follow the following rules:
 ///

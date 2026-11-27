@@ -75,6 +75,14 @@ webauthn-uv-blocked-prompt =
     User verification failed on { $hostname }. There were too many failed attempts and the built-in user verification method has been blocked.
 webauthn-already-registered-prompt =
     This device is already registered. Try a different device.
+# Variables:
+#  $hostname (String): the origin (website) for which an account needs to be selected.
+webauthn-scan-qr-code-prompt =
+    Scan the QR code to authenticate with { $hostname }.
+webauthn-hybrid-mc-title =
+    Scan the QR code with an iPhone, iPad or Android device to save a passkey.
+webauthn-hybrid-ga-title =
+    Scan the QR code with an iPhone, iPad or Android device to authenticate with a passkey.
 webauthn-cancel = Cancel
     .accesskey = c
 webauthn-allow = Allow

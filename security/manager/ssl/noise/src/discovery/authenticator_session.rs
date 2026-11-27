@@ -273,8 +273,8 @@ impl CtapCableAuthenticatorDiscoverySession {
         Ok(ThinVec::from(encrypted_eid))
     }
 
-    xpcom_method!(handshake => Handshake(aInitialMessage: *const ThinVec<u8>) -> *const nsICtapCableResponder);
-    fn handshake(&self, initial_message: &ThinVec<u8>) -> Result<RefPtr<nsICtapCableResponder>> {
+    xpcom_method!(handshake => Handshake(aInitialMessage: *const nsACString) -> *const nsICtapCableResponder);
+    fn handshake(&self, initial_message: &nsACString) -> Result<RefPtr<nsICtapCableResponder>> {
         let guard = self.get_self()?;
         let responder = guard.as_responder(initial_message)?;
         let responder: RefPtr<CtapCableResponder> = responder.into();

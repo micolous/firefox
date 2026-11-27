@@ -13,6 +13,11 @@ XPCOMUtils.defineLazyServiceGetter(
   Ci.nsIWebAuthnService
 );
 
+ChromeUtils.defineESModuleGetters(lazy, {
+  QRCodeGenerator:
+    "moz-src:///browser/components/qrcode/QRCodeGenerator.sys.mjs",
+});
+
 export let WebAuthnPromptHelper = {
   _icon: "webauthn-notification-icon",
   _topic: "webauthn-prompt",

@@ -21,6 +21,7 @@ extern crate cert_storage;
 extern crate chardetng_c;
 extern crate cosec;
 extern crate crypto_hash;
+extern crate ctap_ble;
 #[cfg(feature = "cubeb_coreaudio_rust")]
 extern crate cubeb_coreaudio;
 #[cfg(feature = "cubeb_pulse_rust")]

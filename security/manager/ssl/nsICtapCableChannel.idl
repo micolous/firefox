@@ -14,7 +14,7 @@
  * https://noiseprotocol.org/noise.html#the-symmetricstate-object
  */
 
-[scriptable, uuid(44147a85-3d83-4fa5-b165-bb1f334b1ea4)]
+[scriptable, uuid(9d5877ab-b8e8-4250-8700-f99535d204a9)]
 interface nsICtapCableChannel : nsISupports
 {
     /**
@@ -36,11 +36,13 @@ interface nsICtapCableChannel : nsISupports
 
     /**
      * Encrypt plaintext using this channel's encryption key, and increment the
-     * encryption nonce.
+     * encryption nonce. The plaintext may be binary.
      *
      * Returns an error if the channel does not have encryption keys.
+     *
+     * **NOTE:** the ciphertext will be binary!
      */
-    Array<octet> encrypt(in Array<octet> aPlainText);
+    ACString encrypt(in ACString aPlainText);
 
     /**
      * Decrypt ciphertext using this channel's decryption key and nonce. On
@@ -48,8 +50,11 @@ interface nsICtapCableChannel : nsISupports
      *
      * Returns an error if the channel does not have decryptionkeys, or the data
      * cannot be decrypted.
+     *
+     * **NOTE:** the ciphertext will be binary, and the plaintext may also be
+     * binary!
      */
-    Array<octet> decrypt(in Array<octet> aCipherText);
+    ACString decrypt(in ACString aCipherText);
 };
 
 
@@ -60,7 +65,7 @@ interface nsICtapCableInitiator : nsICtapCableChannel {
      *
      * <https://noiseprotocol.org/noise.html#channel-binding>
      */
-    readonly attribute Array<octet> handshakeHash;
+    readonly attribute ACString handshakeHash;
 };
 
 
@@ -71,10 +76,10 @@ interface nsICtapCableResponder : nsICtapCableChannel {
      *
      * <https://noiseprotocol.org/noise.html#channel-binding>
      */
-    readonly attribute Array<octet> handshakeHash;
+    readonly attribute ACString handshakeHash;
 
     /**
      * Response message to send to the initiator to complete the handshake.
      */
-    readonly attribute Array<octet> responseMessage;
+    readonly attribute ACString responseMessage;
 };

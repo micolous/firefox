@@ -43,15 +43,21 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Receiver, RecvError, Sender};
 use std::sync::{Arc, Mutex};
 use thin_vec::{thin_vec, ThinVec};
-use xpcom::interfaces::{
-    nsICredentialParameters, nsIObserverService, nsIWebAuthnAttObj,
-    nsIWebAuthnAutoFillEntriesCallback, nsIWebAuthnAutoFillEntry, nsIWebAuthnRegisterArgs,
-    nsIWebAuthnRegisterPromise, nsIWebAuthnRegisterResult, nsIWebAuthnService, nsIWebAuthnSignArgs,
-    nsIWebAuthnSignPromise, nsIWebAuthnSignResult,
+use xpcom::{
+    interfaces::{
+        nsICredentialParameters, nsIObserverService, nsIWebAuthnAttObj,
+        nsIWebAuthnAutoFillEntriesCallback, nsIWebAuthnAutoFillEntry, nsIWebAuthnRegisterArgs,
+        nsIWebAuthnRegisterPromise, nsIWebAuthnRegisterResult, nsIWebAuthnService,
+        nsIWebAuthnSignArgs, nsIWebAuthnSignPromise, nsIWebAuthnSignResult,
+    },
+    nsID,
 };
 use xpcom::{xpcom_method, RefPtr};
+
 mod about_webauthn_controller;
 use about_webauthn_controller::*;
+mod cable;
+use crate::cable::CableTokenManager;
 mod test_token;
 use test_token::TestTokenManager;
 
@@ -113,16 +119,36 @@ enum BrowserPromptType<'a> {
     NoDevicesFound,
 }
 
+/// Commands for `WebAuthnHybridHelper.sys.mjs`, for handling the CTAP caBLE/Hybrid transport.
+#[derive(Serialize)]
+#[serde(tag = "type", rename_all = "kebab-case")]
+enum BrowserHybridCommandType<'a> {
+    StartScanning,
+    ShowQrCode { qr: String, request_type: &'a str },
+    StopScanning,
+}
+
 #[derive(Debug)]
 enum PromptTarget {
     Browser,
     AboutPage,
     Logging,
+    Hybrid,
 }
 
 #[derive(Serialize)]
 struct BrowserPromptMessage<'a> {
     prompt: BrowserPromptType<'a>,
+    tid: u64,
+    origin: Option<&'a str>,
+    #[serde(rename = "browsingContextId")]
+    browsing_context_id: Option<u64>,
+}
+
+/// Message for `WebAuthnHybridHelper.sys.mjs`, for handling the CTAP caBLE/Hybrid transport.
+#[derive(Serialize)]
+struct BrowserHybridCommand<'a> {
+    command: BrowserHybridCommandType<'a>,
     tid: u64,
     origin: Option<&'a str>,
     #[serde(rename = "browsingContextId")]
@@ -135,6 +161,7 @@ fn notify_observers(prompt_target: PromptTarget, json: nsString) -> Result<(), n
         PromptTarget::Browser => cstr!("webauthn-prompt"),
         PromptTarget::AboutPage => cstr!("about-webauthn-prompt"),
         PromptTarget::Logging => cstr!("webauthn-logging"),
+        PromptTarget::Hybrid => cstr!("webauthn-hybrid"),
     };
 
     RunnableBuilder::new("AuthrsService::send_prompt", move || {
@@ -171,6 +198,30 @@ fn send_prompt(
 fn cancel_prompts(tid: u64) -> Result<(), nsresult> {
     send_prompt(BrowserPromptType::Cancel, tid, None, None)?;
     Ok(())
+}
+
+/// Send a hybrid control command to the browser.
+fn send_hybrid_command(
+    command: BrowserHybridCommandType,
+    tid: u64,
+    origin: Option<&str>,
+    browsing_context_id: Option<u64>,
+) -> Result<(), nsresult> {
+    let msg = BrowserHybridCommand {
+        command,
+        tid,
+        origin,
+        browsing_context_id,
+    };
+
+    let mut json = nsString::new();
+    write!(json, "{}", json!(&msg)).or(Err(NS_ERROR_FAILURE))?;
+    notify_observers(PromptTarget::Hybrid, json)
+}
+
+/// Stop Bluetooth scanning operations for hybrid transport.
+fn stop_hybrid(tid: u64) -> Result<(), nsresult> {
+    send_hybrid_command(BrowserHybridCommandType::StopScanning, tid, None, None)
 }
 
 // Returns true if the attestation object contains information that could
@@ -730,10 +781,11 @@ struct TransactionState {
 }
 
 // AuthrsService provides an nsIWebAuthnService built on top of authenticator-rs.
-#[xpcom(implement(nsIWebAuthnService), atomic)]
+#[xpcom(implement(nsIWebAuthnService, nsICtapBleCentralEventCallback), atomic)]
 pub struct AuthrsService {
     usb_token_manager: Mutex<StateMachine>,
     test_token_manager: TestTokenManager,
+    cable_token_manager: Mutex<CableTokenManager>,
     transaction: Arc<Mutex<Option<TransactionState>>>,
     do_logging: Arc<AtomicBool>,
 }
@@ -1053,7 +1105,32 @@ impl AuthrsService {
         // in parallel to any number of transports. We only support the USB transport in production
         // configurations, so we do not need the full generality of `AuthenticatorService` here.
         // We disable the USB transport in tests that use virtual devices.
-        if static_prefs::pref!("security.webauth.webauthn_enable_usbtoken") {
+        if static_prefs::pref!("security.webauth.webauthn_enable_cable") {
+            // TODO: make this dispatch in a "platformy" way.
+            let mut discovery = noise::discovery::InitiatorSession::new()
+                .inspect_err(|_| self.discard_transaction())?;
+            discovery.request_type = "mc".to_string();
+
+            send_hybrid_command(
+                BrowserHybridCommandType::ShowQrCode {
+                    qr: discovery.qr_url()?,
+                    request_type: "mc",
+                },
+                tid,
+                Some(&info.origin),
+                Some(browsing_context_id),
+            )
+            .inspect_err(|_| self.discard_transaction())?;
+
+            self.cable_token_manager.lock().unwrap().register(
+                &self,
+                timeout_ms,
+                info,
+                discovery,
+                status_tx,
+                state_callback,
+            );
+        } else if static_prefs::pref!("security.webauth.webauthn_enable_usbtoken") {
             // TODO(Bug 1855290) Remove this presence prompt
             send_prompt(
                 BrowserPromptType::Presence,
@@ -1302,17 +1379,50 @@ impl AuthrsService {
             }),
         );
 
-        // TODO(Bug 1855290) Remove this presence prompt
-        send_prompt(
-            BrowserPromptType::Presence,
-            tid,
-            Some(&info.origin),
-            Some(browsing_context_id),
-        )
-        .inspect_err(|_| self.discard_transaction())?;
-
         // As in `register`, we are intentionally avoiding `AuthenticatorService` here.
-        if static_prefs::pref!("security.webauth.webauthn_enable_usbtoken") {
+        if static_prefs::pref!("security.webauth.webauthn_enable_cable") {
+            // TODO: make this dispatch in a "platformy" way.
+            let mut discovery = noise::discovery::InitiatorSession::new()
+                .inspect_err(|_| self.discard_transaction())?;
+            discovery.request_type = "ga".to_string();
+
+            send_hybrid_command(
+                BrowserHybridCommandType::StartScanning,
+                tid,
+                Some(&info.origin),
+                Some(browsing_context_id),
+            )
+            .inspect_err(|_| self.discard_transaction())?;
+
+            send_hybrid_command(
+                BrowserHybridCommandType::ShowQrCode {
+                    qr: discovery.qr_url()?,
+                    request_type: "ga",
+                },
+                tid,
+                Some(&info.origin),
+                Some(browsing_context_id),
+            )
+            .inspect_err(|_| self.discard_transaction())?;
+
+            self.cable_token_manager.lock().unwrap().sign(
+                &self,
+                timeout_ms,
+                info,
+                discovery,
+                status_tx,
+                state_callback,
+            );
+        } else if static_prefs::pref!("security.webauth.webauthn_enable_usbtoken") {
+            // TODO(Bug 1855290) Remove this presence prompt
+            send_prompt(
+                BrowserPromptType::Presence,
+                tid,
+                Some(&info.origin),
+                Some(browsing_context_id),
+            )
+            .inspect_err(|_| self.discard_transaction())?;
+
             self.usb_token_manager.lock().unwrap().sign(
                 timeout_ms as u64,
                 info,
@@ -1724,15 +1834,58 @@ impl AuthrsService {
         self.do_logging.store(false, Ordering::Relaxed);
         Ok(())
     }
+
+    // nsICtapBleCentralEventCallback implementation
+    xpcom_method!(service_data_advert => ServiceDataAdvert(
+        aPeripheralID: *const ThinVec<u8>,
+        aServiceID: *const nsID,
+        aData: *const ThinVec<u8>
+    ));
+    fn service_data_advert(
+        &self,
+        peripheral_id: &ThinVec<u8>,
+        service_id: &nsID,
+        data: &ThinVec<u8>,
+    ) -> Result<(), nsresult> {
+        let mut guard = self
+            .cable_token_manager
+            .lock()
+            .map_err(|_| NS_ERROR_FAILURE)?;
+        guard.service_data_advert(peripheral_id, service_id, data)
+    }
+
+    xpcom_method!(state_update => StateUpdate(aState: u8));
+    fn state_update(&self, state: u8) -> Result<(), nsresult> {
+        let mut guard = self
+            .cable_token_manager
+            .lock()
+            .map_err(|_| NS_ERROR_FAILURE)?;
+        guard.state_update(state)
+    }
+
+    xpcom_method!(stopped => Stopped());
+    fn stopped(&self) -> Result<(), nsresult> {
+        let mut guard = self
+            .cable_token_manager
+            .lock()
+            .map_err(|_| NS_ERROR_FAILURE)?;
+        guard.stopped()
+    }
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn authrs_service_constructor(
     result: *mut *const nsIWebAuthnService,
 ) -> nsresult {
+    let cable_token_manager = match CableTokenManager::new() {
+        Ok(c) => c,
+        Err(e) => return e,
+    };
+
     let wrapper = AuthrsService::allocate(InitAuthrsService {
         usb_token_manager: Mutex::new(StateMachine::new()),
         test_token_manager: TestTokenManager::new(),
+        cable_token_manager: Mutex::new(cable_token_manager),
         transaction: Arc::new(Mutex::new(None)),
         do_logging: Arc::new(AtomicBool::new(false)),
     });

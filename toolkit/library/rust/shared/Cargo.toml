@@ -33,6 +33,7 @@ encoding_glue = { path = "../../../../intl/encoding_glue" }
 locale_service_glue = { path = "../../../../intl/locale/rust/locale_service_glue" }
 app_collator_glue = { path = "../../../../intl/app_collator_glue" }
 authrs_bridge = { path = "../../../../dom/webauthn/authrs_bridge" }
+ctap_ble = { path = "../../../../dom/webauthn/ctap_ble" }
 gkrust_utils = { path = "../../../../xpcom/rust/gkrust_utils" }
 gecko_logger = { path = "../../../../xpcom/rust/gecko_logger" }
 gecko_tracing = { path = "../../../../xpcom/rust/gecko_tracing" }

@@ -21,6 +21,7 @@ for feature in gkrust_features:
 # compilation artifacts with gkrust.
 RUST_TESTS = [
     "authenticator",
+    "authrs_bridge",
     "crashreporter",
     "crash_helper_common",
     "firefox-on-glean",

@@ -1,0 +1,17 @@
+[package]
+name = "ctap_ble"
+version = "0.1.0"
+edition = "2018"
+rust-version.workspace = true
+license = "MPL-2.0"
+description = "Provides a subset of system Bluetooth LE APIs used by the CTAP caBLE/Hybrid transport."
+
+[dependencies]
+libc = "0.2"
+log = "0.4"
+moz_task = { path = "../../../xpcom/rust/moz_task" }
+nserror = { path = "../../../xpcom/rust/nserror" }
+nsstring = { path = "../../../xpcom/rust/nsstring" }
+thin-vec = { version = "0.2.1", features = ["gecko-ffi"] }
+thiserror = "2"
+xpcom = { path = "../../../xpcom/rust/xpcom" }

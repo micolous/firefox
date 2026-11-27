@@ -10,6 +10,7 @@ base64 = "^0.22"
 cstr = "0.2"
 log = "0.4"
 moz_task = { path = "../../../xpcom/rust/moz_task" }
+noise = { path = "../../../security/manager/ssl/noise", features = ["xpcom"] }
 nserror = { path = "../../../xpcom/rust/nserror" }
 nsstring = { path = "../../../xpcom/rust/nsstring" }
 rand = "0.8"

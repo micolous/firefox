@@ -19555,6 +19555,15 @@
   mirror: always
   rust: true
 
+#ifdef NIGHTLY_BUILD
+# Dispatch WebAuthn requests to caBLE backend
+- name: security.webauth.webauthn_enable_cable
+  type: RelaxedAtomicBool
+  value: @IS_NOT_MOBILE@
+  mirror: always
+  rust: true
+#endif
+
 # Skip direct attestation consent prompts
 - name: security.webauthn.always_allow_direct_attestation
   type: RelaxedAtomicBool
